@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { AppShell } from "@/components/sevs/AppShell";
-import { getElection } from "@/lib/sevs-data";
+import { getElection, type Election } from "@/lib/sevs-data";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Download, ArrowRight } from "lucide-react";
 
