@@ -19,7 +19,7 @@ export const Route = createFileRoute("/results/$electionId")({
 });
 
 function ResultsPage() {
-  const { election } = Route.useLoaderData();
+  const { election } = Route.useLoaderData() as { election: Election };
   const results = closedResults[election.id] ?? {};
 
   return (

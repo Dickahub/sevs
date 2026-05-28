@@ -22,7 +22,7 @@ export const Route = createFileRoute("/vote/$electionId")({
 });
 
 function BallotPage() {
-  const { election } = Route.useLoaderData();
+  const { election } = Route.useLoaderData() as { election: Election };
   const navigate = useNavigate();
   // selections[positionId] = Set of candidate ids
   const [sel, setSel] = useState<Record<string, Set<string>>>({});
