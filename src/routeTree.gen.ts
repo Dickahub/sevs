@@ -9,38 +9,173 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as AuditRouteImport } from './routes/audit'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ResultsIndexRouteImport } from './routes/results.index'
+import { Route as VoteElectionIdRouteImport } from './routes/vote.$electionId'
+import { Route as ResultsElectionIdRouteImport } from './routes/results.$electionId'
+import { Route as VoteElectionIdCastRouteImport } from './routes/vote.$electionId.cast'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditRoute = AuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResultsIndexRoute = ResultsIndexRouteImport.update({
+  id: '/results/',
+  path: '/results/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VoteElectionIdRoute = VoteElectionIdRouteImport.update({
+  id: '/vote/$electionId',
+  path: '/vote/$electionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResultsElectionIdRoute = ResultsElectionIdRouteImport.update({
+  id: '/results/$electionId',
+  path: '/results/$electionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VoteElectionIdCastRoute = VoteElectionIdCastRouteImport.update({
+  id: '/cast',
+  path: '/cast',
+  getParentRoute: () => VoteElectionIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/audit': typeof AuditRoute
+  '/dashboard': typeof DashboardRoute
+  '/login': typeof LoginRoute
+  '/results/$electionId': typeof ResultsElectionIdRoute
+  '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
+  '/results/': typeof ResultsIndexRoute
+  '/vote/$electionId/cast': typeof VoteElectionIdCastRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/audit': typeof AuditRoute
+  '/dashboard': typeof DashboardRoute
+  '/login': typeof LoginRoute
+  '/results/$electionId': typeof ResultsElectionIdRoute
+  '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
+  '/results': typeof ResultsIndexRoute
+  '/vote/$electionId/cast': typeof VoteElectionIdCastRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/audit': typeof AuditRoute
+  '/dashboard': typeof DashboardRoute
+  '/login': typeof LoginRoute
+  '/results/$electionId': typeof ResultsElectionIdRoute
+  '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
+  '/results/': typeof ResultsIndexRoute
+  '/vote/$electionId/cast': typeof VoteElectionIdCastRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/audit'
+    | '/dashboard'
+    | '/login'
+    | '/results/$electionId'
+    | '/vote/$electionId'
+    | '/results/'
+    | '/vote/$electionId/cast'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/admin'
+    | '/audit'
+    | '/dashboard'
+    | '/login'
+    | '/results/$electionId'
+    | '/vote/$electionId'
+    | '/results'
+    | '/vote/$electionId/cast'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/audit'
+    | '/dashboard'
+    | '/login'
+    | '/results/$electionId'
+    | '/vote/$electionId'
+    | '/results/'
+    | '/vote/$electionId/cast'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
+  AuditRoute: typeof AuditRoute
+  DashboardRoute: typeof DashboardRoute
+  LoginRoute: typeof LoginRoute
+  ResultsElectionIdRoute: typeof ResultsElectionIdRoute
+  VoteElectionIdRoute: typeof VoteElectionIdRouteWithChildren
+  ResultsIndexRoute: typeof ResultsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audit': {
+      id: '/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +183,58 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/results/': {
+      id: '/results/'
+      path: '/results'
+      fullPath: '/results/'
+      preLoaderRoute: typeof ResultsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vote/$electionId': {
+      id: '/vote/$electionId'
+      path: '/vote/$electionId'
+      fullPath: '/vote/$electionId'
+      preLoaderRoute: typeof VoteElectionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/results/$electionId': {
+      id: '/results/$electionId'
+      path: '/results/$electionId'
+      fullPath: '/results/$electionId'
+      preLoaderRoute: typeof ResultsElectionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vote/$electionId/cast': {
+      id: '/vote/$electionId/cast'
+      path: '/cast'
+      fullPath: '/vote/$electionId/cast'
+      preLoaderRoute: typeof VoteElectionIdCastRouteImport
+      parentRoute: typeof VoteElectionIdRoute
+    }
   }
 }
 
+interface VoteElectionIdRouteChildren {
+  VoteElectionIdCastRoute: typeof VoteElectionIdCastRoute
+}
+
+const VoteElectionIdRouteChildren: VoteElectionIdRouteChildren = {
+  VoteElectionIdCastRoute: VoteElectionIdCastRoute,
+}
+
+const VoteElectionIdRouteWithChildren = VoteElectionIdRoute._addFileChildren(
+  VoteElectionIdRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
+  AuditRoute: AuditRoute,
+  DashboardRoute: DashboardRoute,
+  LoginRoute: LoginRoute,
+  ResultsElectionIdRoute: ResultsElectionIdRoute,
+  VoteElectionIdRoute: VoteElectionIdRouteWithChildren,
+  ResultsIndexRoute: ResultsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
