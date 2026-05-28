@@ -1,9 +1,8 @@
 import { createFileRoute, Link, useNavigate, notFound } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppShell } from "@/components/sevs/AppShell";
-import { getElection, formatDateTime } from "@/lib/sevs-data";
+import { getElection, formatDateTime, type Election } from "@/lib/sevs-data";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Lock, ShieldCheck, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/vote/$electionId")({

@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { AppShell } from "@/components/sevs/AppShell";
-import { closedResults, getElection, formatDateTime, turnoutPct } from "@/lib/sevs-data";
+import { closedResults, getElection, formatDateTime, turnoutPct, type Election } from "@/lib/sevs-data";
 import { ArrowLeft, ShieldCheck, Trophy } from "lucide-react";
 
 export const Route = createFileRoute("/results/$electionId")({
