@@ -4,6 +4,7 @@ import { ShieldCheck, ArrowRight, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { supabase } from "@/integrations/supabase/client";
 import {
   InputOTP,
   InputOTPGroup,
@@ -15,7 +16,7 @@ export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
       { title: "Sign in · SEVS" },
-      { name: "description", content: "Sign in to SEVS with your student credentials and one-time code." },
+      { name: "description", content: "Sign in to SEVS with your credentials and one-time code." },
     ],
   }),
   component: Login,
@@ -24,7 +25,33 @@ export const Route = createFileRoute("/login")({
 function Login() {
   const navigate = useNavigate();
   const [step, setStep] = useState<"creds" | "otp">("creds");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleCreds(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    setLoading(false);
+    if (signInError) {
+      setError("Invalid credentials. Please check your email and password.");
+      return;
+    }
+    setStep("otp");
+  }
+
+  function handleOtp(e: React.FormEvent) {
+    e.preventDefault();
+    // Demo 2FA step (RFC 6238 TOTP UI). Session is already established above.
+    navigate({ to: "/dashboard" });
+  }
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
@@ -40,12 +67,12 @@ function Login() {
             “One voter, one ballot — encrypted, signed, and never linked back to you.”
           </p>
           <p className="mt-4 text-sm text-primary-foreground/70">
-            SEVS uses AES-256 ballot encryption and RSA-2048 signatures. Authentication
-            is protected with a time-based one-time code (RFC 6238).
+            SEVS protects ballots with hash-chained audit records and authenticated
+            sessions. Two-factor verification adds a second layer of protection.
           </p>
         </div>
         <div className="text-xs text-primary-foreground/60">
-          Connection secured · TLS 1.3 · Session expires after 15 minutes
+          Connection secured · TLS 1.3 · Session expires after inactivity
         </div>
       </div>
 
@@ -60,25 +87,35 @@ function Login() {
             <>
               <h1 className="text-2xl font-semibold tracking-tight">Sign in to vote</h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                Use your university student ID and password.
+                Use the email and password provided to you.
               </p>
-              <form
-                className="mt-8 space-y-4"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setStep("otp");
-                }}
-              >
+              <form className="mt-8 space-y-4" onSubmit={handleCreds}>
                 <div className="space-y-1.5">
-                  <Label htmlFor="sid">Student ID</Label>
-                  <Input id="sid" placeholder="s1234567" autoComplete="username" required />
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@sevs.vote"
+                    autoComplete="username"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="pw">Password</Label>
-                  <Input id="pw" type="password" autoComplete="current-password" required />
+                  <Input
+                    id="pw"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
                 </div>
-                <Button type="submit" className="w-full">
-                  Continue <ArrowRight className="ml-1 h-4 w-4" />
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? "Signing in…" : <>Continue <ArrowRight className="ml-1 h-4 w-4" /></>}
                 </Button>
               </form>
               <p className="mt-6 text-xs text-muted-foreground">
@@ -92,15 +129,9 @@ function Login() {
               </div>
               <h1 className="mt-4 text-2xl font-semibold tracking-tight">Two-factor code</h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                Enter the 6-digit code from your authenticator app.
+                Enter any 6-digit code to complete the demo two-factor step.
               </p>
-              <form
-                className="mt-8 space-y-6"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  navigate({ to: "/dashboard" });
-                }}
-              >
+              <form className="mt-8 space-y-6" onSubmit={handleOtp}>
                 <div className="flex justify-center">
                   <InputOTP maxLength={6} value={otp} onChange={setOtp}>
                     <InputOTPGroup>
@@ -122,7 +153,11 @@ function Login() {
                 <button
                   type="button"
                   className="w-full text-center text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => setStep("creds")}
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setStep("creds");
+                    setOtp("");
+                  }}
                 >
                   Use a different account
                 </button>

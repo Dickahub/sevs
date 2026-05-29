@@ -18,6 +18,7 @@ import { Route as ResultsIndexRouteImport } from './routes/results.index'
 import { Route as VoteElectionIdRouteImport } from './routes/vote.$electionId'
 import { Route as ResultsElectionIdRouteImport } from './routes/results.$electionId'
 import { Route as VoteElectionIdCastRouteImport } from './routes/vote.$electionId.cast'
+import { Route as ApiPublicSeedSevsRouteImport } from './routes/api/public/seed-sevs'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -64,6 +65,11 @@ const VoteElectionIdCastRoute = VoteElectionIdCastRouteImport.update({
   path: '/cast',
   getParentRoute: () => VoteElectionIdRoute,
 } as any)
+const ApiPublicSeedSevsRoute = ApiPublicSeedSevsRouteImport.update({
+  id: '/api/public/seed-sevs',
+  path: '/api/public/seed-sevs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/results/$electionId': typeof ResultsElectionIdRoute
   '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
   '/results/': typeof ResultsIndexRoute
+  '/api/public/seed-sevs': typeof ApiPublicSeedSevsRoute
   '/vote/$electionId/cast': typeof VoteElectionIdCastRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/results/$electionId': typeof ResultsElectionIdRoute
   '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
   '/results': typeof ResultsIndexRoute
+  '/api/public/seed-sevs': typeof ApiPublicSeedSevsRoute
   '/vote/$electionId/cast': typeof VoteElectionIdCastRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/results/$electionId': typeof ResultsElectionIdRoute
   '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
   '/results/': typeof ResultsIndexRoute
+  '/api/public/seed-sevs': typeof ApiPublicSeedSevsRoute
   '/vote/$electionId/cast': typeof VoteElectionIdCastRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/results/$electionId'
     | '/vote/$electionId'
     | '/results/'
+    | '/api/public/seed-sevs'
     | '/vote/$electionId/cast'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/results/$electionId'
     | '/vote/$electionId'
     | '/results'
+    | '/api/public/seed-sevs'
     | '/vote/$electionId/cast'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/results/$electionId'
     | '/vote/$electionId'
     | '/results/'
+    | '/api/public/seed-sevs'
     | '/vote/$electionId/cast'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   ResultsElectionIdRoute: typeof ResultsElectionIdRoute
   VoteElectionIdRoute: typeof VoteElectionIdRouteWithChildren
   ResultsIndexRoute: typeof ResultsIndexRoute
+  ApiPublicSeedSevsRoute: typeof ApiPublicSeedSevsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -211,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VoteElectionIdCastRouteImport
       parentRoute: typeof VoteElectionIdRoute
     }
+    '/api/public/seed-sevs': {
+      id: '/api/public/seed-sevs'
+      path: '/api/public/seed-sevs'
+      fullPath: '/api/public/seed-sevs'
+      preLoaderRoute: typeof ApiPublicSeedSevsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -235,17 +255,8 @@ const rootRouteChildren: RootRouteChildren = {
   ResultsElectionIdRoute: ResultsElectionIdRoute,
   VoteElectionIdRoute: VoteElectionIdRouteWithChildren,
   ResultsIndexRoute: ResultsIndexRoute,
+  ApiPublicSeedSevsRoute: ApiPublicSeedSevsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
