@@ -1,6 +1,7 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { ShieldCheck, LayoutDashboard, ClipboardList, Settings2, ScrollText, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 const nav = [
   { to: "/dashboard", label: "Elections", icon: LayoutDashboard },
@@ -11,6 +12,11 @@ const nav = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  async function signOut() {
+    await supabase.auth.signOut();
+    navigate({ to: "/login" });
+  }
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
@@ -54,14 +60,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <p className="truncate text-xs text-sidebar-foreground/60">Voter · #41922</p>
             </div>
           </div>
-          <Link
-            to="/login"
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+          <button
+            onClick={signOut}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
           >
             <LogOut className="h-3.5 w-3.5" /> Sign out
-          </Link>
+          </button>
         </div>
       </aside>
+
 
       <main className="flex-1 overflow-x-hidden">
         <header className="flex items-center justify-between border-b border-border bg-card/60 px-6 py-3 backdrop-blur md:px-10">
