@@ -1,22 +1,43 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck, LayoutDashboard, ClipboardList, Settings2, ScrollText, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { getMe } from "@/lib/sevs-read.functions";
 
-const nav = [
+const baseNav = [
   { to: "/dashboard", label: "Elections", icon: LayoutDashboard },
   { to: "/results", label: "Results", icon: ClipboardList },
-  { to: "/admin", label: "Administration", icon: Settings2 },
   { to: "/audit", label: "Audit log", icon: ScrollText },
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const fetchMe = useServerFn(getMe);
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => fetchMe(), retry: false });
+
+  const nav = me?.isAdmin
+    ? [...baseNav.slice(0, 2), { to: "/admin", label: "Administration", icon: Settings2 }, baseNav[2]]
+    : baseNav;
+
+  const name = me?.fullName ?? "Voter";
+  const initials = name
+    .split(" ")
+    .map((p) => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
   async function signOut() {
     await supabase.auth.signOut();
+    queryClient.clear();
     navigate({ to: "/login" });
   }
+
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
@@ -53,11 +74,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="border-t border-sidebar-border p-4">
           <div className="mb-3 flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-accent text-sm font-semibold">
-              AO
+              {initials || "SV"}
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">Amelia Okafor</p>
-              <p className="truncate text-xs text-sidebar-foreground/60">Voter · #41922</p>
+              <p className="truncate text-sm font-medium">{name}</p>
+              <p className="truncate text-xs text-sidebar-foreground/60">
+                {me?.isAdmin ? "Administrator" : "Voter"}
+                {me?.studentId ? ` · ${me.studentId}` : ""}
+              </p>
             </div>
           </div>
           <button
@@ -68,7 +92,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </aside>
-
 
       <main className="flex-1 overflow-x-hidden">
         <header className="flex items-center justify-between border-b border-border bg-card/60 px-6 py-3 backdrop-blur md:px-10">

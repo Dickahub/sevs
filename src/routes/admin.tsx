@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/sevs/AppShell";
 import { StatusBadge } from "@/components/sevs/StatusBadge";
-import { elections, formatDateTime, turnoutPct } from "@/lib/sevs-data";
-import { Button } from "@/components/ui/button";
-import { Plus, Download, Users, Vote, ShieldCheck } from "lucide-react";
+import { getAdminOverview } from "@/lib/sevs-read.functions";
+import { formatDateTime, turnoutPct } from "@/lib/sevs-types";
+import { requireAuth } from "@/lib/sevs-guard";
+import { Users, Vote, ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
+  beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [
       { title: "Administration · SEVS" },
@@ -16,8 +20,25 @@ export const Route = createFileRoute("/admin")({
 });
 
 function Admin() {
-  const totalVoters = elections.reduce((a, e) => a + e.eligibleVoters, 0);
-  const totalBallots = elections.reduce((a, e) => a + e.ballotsCast, 0);
+  const fetchOverview = useServerFn(getAdminOverview);
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["admin-overview"],
+    queryFn: () => fetchOverview(),
+    retry: false,
+  });
+
+  if (error) {
+    return (
+      <AppShell>
+        <h1 className="text-2xl font-semibold tracking-tight">Administration</h1>
+        <p className="mt-3 text-sm text-destructive">
+          You need administrator access to view this page.
+        </p>
+      </AppShell>
+    );
+  }
+
+  const elections = data?.elections ?? [];
 
   return (
     <AppShell>
@@ -25,23 +46,15 @@ function Admin() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Administration</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Configure elections and oversee voter rolls. All actions are recorded in the audit log.
+            Oversee elections and voter rolls. All actions are recorded in the audit log.
           </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline">
-            <Download className="mr-1.5 h-4 w-4" /> Export reports
-          </Button>
-          <Button>
-            <Plus className="mr-1.5 h-4 w-4" /> New election
-          </Button>
         </div>
       </div>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
-        <Stat label="Eligible voters" value={totalVoters.toLocaleString()} icon={Users} />
-        <Stat label="Ballots cast" value={totalBallots.toLocaleString()} icon={Vote} />
-        <Stat label="Audit chain" value="Verified" icon={ShieldCheck} good />
+        <Stat label="Registered voters" value={(data?.registeredVoters ?? 0).toLocaleString()} icon={Users} />
+        <Stat label="Ballots cast" value={(data?.totalBallots ?? 0).toLocaleString()} icon={Vote} />
+        <Stat label="Audit entries" value={(data?.auditCount ?? 0).toLocaleString()} icon={ShieldCheck} good />
       </div>
 
       <div className="mt-10 overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
@@ -52,10 +65,16 @@ function Admin() {
               <th className="px-5 py-3 text-left font-medium">Status</th>
               <th className="px-5 py-3 text-left font-medium">Window</th>
               <th className="px-5 py-3 text-left font-medium">Turnout</th>
-              <th className="px-5 py-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
+            {isLoading && (
+              <tr>
+                <td colSpan={4} className="px-5 py-6 text-center text-muted-foreground">
+                  Loading…
+                </td>
+              </tr>
+            )}
             {elections.map((e) => (
               <tr key={e.id} className="border-t border-border">
                 <td className="px-5 py-4">
@@ -74,11 +93,11 @@ function Admin() {
                     {e.ballotsCast.toLocaleString()} / {e.eligibleVoters.toLocaleString()}
                   </div>
                   <div className="mt-1 h-1.5 w-32 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full bg-success" style={{ width: `${turnoutPct(e)}%` }} />
+                    <div
+                      className="h-full bg-success"
+                      style={{ width: `${turnoutPct(e.eligibleVoters, e.ballotsCast)}%` }}
+                    />
                   </div>
-                </td>
-                <td className="px-5 py-4 text-right">
-                  <button className="text-sm font-medium text-primary hover:underline">Manage</button>
                 </td>
               </tr>
             ))}

@@ -1,10 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/sevs/AppShell";
 import { StatusBadge } from "@/components/sevs/StatusBadge";
-import { elections, formatDateTime, turnoutPct } from "@/lib/sevs-data";
+import { getElections } from "@/lib/sevs-read.functions";
+import { formatDateTime } from "@/lib/sevs-types";
+import { requireAuth } from "@/lib/sevs-guard";
 import { ArrowRight, Lock } from "lucide-react";
 
 export const Route = createFileRoute("/results/")({
+  beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [
       { title: "Results · SEVS" },
@@ -15,6 +20,13 @@ export const Route = createFileRoute("/results/")({
 });
 
 function ResultsIndex() {
+  const fetchElections = useServerFn(getElections);
+  const { data, isLoading } = useQuery({
+    queryKey: ["elections"],
+    queryFn: () => fetchElections(),
+  });
+  const elections = data?.elections ?? [];
+
   return (
     <AppShell>
       <h1 className="text-2xl font-semibold tracking-tight">Results</h1>
@@ -24,6 +36,7 @@ function ResultsIndex() {
       </p>
 
       <div className="mt-8 grid gap-3">
+        {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
         {elections.map((e) => {
           const isOpen = e.status === "open";
           return (
@@ -37,7 +50,7 @@ function ResultsIndex() {
                   <StatusBadge status={e.status} />
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {e.organisation} · {turnoutPct(e)}% turnout ·{" "}
+                  {e.organisation} ·{" "}
                   {isOpen ? `Closes ${formatDateTime(e.closesAt)}` : `Closed ${formatDateTime(e.closesAt)}`}
                 </p>
               </div>

@@ -1,10 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/sevs/AppShell";
-import { auditLog, formatDateTime } from "@/lib/sevs-data";
-import { Button } from "@/components/ui/button";
-import { ShieldCheck, Download } from "lucide-react";
+import { getAuditLog } from "@/lib/sevs-read.functions";
+import { formatDateTime } from "@/lib/sevs-types";
+import { requireAuth } from "@/lib/sevs-guard";
+import { ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/audit")({
+  beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [
       { title: "Audit log · SEVS" },
@@ -15,6 +19,13 @@ export const Route = createFileRoute("/audit")({
 });
 
 function Audit() {
+  const fetchAudit = useServerFn(getAuditLog);
+  const { data, isLoading } = useQuery({
+    queryKey: ["audit"],
+    queryFn: () => fetchAudit(),
+  });
+  const entries = data?.entries ?? [];
+
   return (
     <AppShell>
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -24,13 +35,8 @@ function Audit() {
             Every event is hash-chained with SHA-256. Any tampering breaks the chain.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-medium text-success">
-            <ShieldCheck className="h-3.5 w-3.5" /> Chain verified — {auditLog.length} entries
-          </div>
-          <Button variant="outline" size="sm">
-            <Download className="mr-1.5 h-4 w-4" /> Export
-          </Button>
+        <div className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-medium text-success">
+          <ShieldCheck className="h-3.5 w-3.5" /> Chain verified — {entries.length} entries
         </div>
       </div>
 
@@ -48,7 +54,14 @@ function Audit() {
               </tr>
             </thead>
             <tbody>
-              {auditLog.map((row) => (
+              {isLoading && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
+                    Loading…
+                  </td>
+                </tr>
+              )}
+              {entries.map((row) => (
                 <tr key={row.seq} className="border-t border-border align-top">
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{row.seq}</td>
                   <td className="px-4 py-3 text-xs">{formatDateTime(row.ts)}</td>

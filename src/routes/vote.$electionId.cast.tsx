@@ -1,30 +1,35 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/sevs/AppShell";
-import { getElection, type Election } from "@/lib/sevs-data";
+import { getElectionDetail } from "@/lib/sevs-read.functions";
+import { formatDateTime } from "@/lib/sevs-types";
+import { requireAuth } from "@/lib/sevs-guard";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Download, ArrowRight } from "lucide-react";
+import { CheckCircle2, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/vote/$electionId/cast")({
-  loader: ({ params }) => {
-    const election = getElection(params.electionId);
-    if (!election) throw notFound();
-    return { election };
-  },
+  beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [
       { title: "Ballot cast · SEVS" },
-      { name: "description", content: "Your encrypted ballot has been recorded." },
+      { name: "description", content: "Your ballot has been recorded." },
     ],
   }),
   component: CastConfirmation,
 });
 
 function CastConfirmation() {
-  const { election } = Route.useLoaderData();
-  const receipt = "SEVS-2026-R-" + Math.random().toString(36).slice(2, 10).toUpperCase();
-  const hash = Array.from({ length: 4 }, () =>
-    Math.random().toString(16).slice(2, 10),
-  ).join("");
+  const { electionId } = Route.useParams();
+  const fetchDetail = useServerFn(getElectionDetail);
+  const { data, isLoading } = useQuery({
+    queryKey: ["election-detail", electionId],
+    queryFn: () => fetchDetail({ data: { electionId } }),
+  });
+
+  const receiptHash = data?.receipt?.ballot_hash ?? "";
+  const castAt = data?.receipt?.cast_at;
+  const receiptId = receiptHash ? "SEVS-2026-R-" + receiptHash.slice(0, 8).toUpperCase() : "";
 
   return (
     <AppShell>
@@ -34,30 +39,35 @@ function CastConfirmation() {
         </div>
         <h1 className="mt-6 text-2xl font-semibold tracking-tight">Your ballot has been recorded</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Thank you for voting in <span className="font-medium text-foreground">{election.title}</span>.
-          Your ballot was encrypted, signed, and appended to the election log.
+          {isLoading
+            ? "Loading your receipt…"
+            : data?.election
+              ? `Thank you for voting in ${data.election.title}. Your ballot was recorded and appended to the election log.`
+              : "Your ballot was recorded."}
         </p>
 
-        <div className="mt-8 rounded-xl border border-border bg-card p-5 text-left shadow-[var(--shadow-card)]">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Verifiable receipt
-          </p>
-          <p className="mt-2 font-mono text-sm text-foreground">{receipt}</p>
-          <div className="mt-3 border-t border-border pt-3">
+        {receiptHash && (
+          <div className="mt-8 rounded-xl border border-border bg-card p-5 text-left shadow-[var(--shadow-card)]">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Ballot hash (SHA-256)
+              Verifiable receipt
             </p>
-            <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{hash}</p>
+            <p className="mt-2 font-mono text-sm text-foreground">{receiptId}</p>
+            {castAt && (
+              <p className="mt-1 text-xs text-muted-foreground">Cast {formatDateTime(castAt)}</p>
+            )}
+            <div className="mt-3 border-t border-border pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Ballot hash (SHA-256)
+              </p>
+              <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{receiptHash}</p>
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">
+              Keep this receipt to confirm your ballot was counted. It does not reveal how you voted.
+            </p>
           </div>
-          <p className="mt-4 text-xs text-muted-foreground">
-            Keep this receipt to confirm your ballot was counted. It does not reveal how you voted.
-          </p>
-        </div>
+        )}
 
         <div className="mt-6 flex flex-wrap justify-center gap-2">
-          <Button variant="outline">
-            <Download className="mr-1.5 h-4 w-4" /> Download receipt
-          </Button>
           <Link to="/dashboard">
             <Button>
               Back to elections <ArrowRight className="ml-1.5 h-4 w-4" />

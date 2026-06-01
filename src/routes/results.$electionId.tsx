@@ -1,17 +1,17 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/sevs/AppShell";
-import { closedResults, getElection, formatDateTime, turnoutPct, type Election } from "@/lib/sevs-data";
+import { getElectionResults } from "@/lib/sevs-read.functions";
+import { formatDateTime } from "@/lib/sevs-types";
+import { requireAuth } from "@/lib/sevs-guard";
 import { ArrowLeft, ShieldCheck, Trophy } from "lucide-react";
 
 export const Route = createFileRoute("/results/$electionId")({
-  loader: ({ params }) => {
-    const election = getElection(params.electionId);
-    if (!election) throw notFound();
-    return { election };
-  },
-  head: ({ loaderData }) => ({
+  beforeLoad: () => requireAuth(),
+  head: () => ({
     meta: [
-      { title: `${loaderData?.election.title ?? "Results"} · SEVS` },
+      { title: "Results · SEVS" },
       { name: "description", content: "Verified, hash-chained election results." },
     ],
   }),
@@ -19,8 +19,12 @@ export const Route = createFileRoute("/results/$electionId")({
 });
 
 function ResultsPage() {
-  const { election } = Route.useLoaderData() as { election: Election };
-  const results = closedResults[election.id] ?? {};
+  const { electionId } = Route.useParams();
+  const fetchResults = useServerFn(getElectionResults);
+  const { data, isLoading } = useQuery({
+    queryKey: ["results", electionId],
+    queryFn: () => fetchResults({ data: { electionId } }),
+  });
 
   return (
     <AppShell>
@@ -31,71 +35,80 @@ function ResultsPage() {
         <ArrowLeft className="h-4 w-4" /> All results
       </Link>
 
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{election.title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {election.organisation} · Closed {formatDateTime(election.closesAt)} · {turnoutPct(election)}% turnout
-          </p>
-        </div>
-        <div className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-medium text-success">
-          <ShieldCheck className="h-3.5 w-3.5" /> Hash chain verified
-        </div>
-      </div>
+      {isLoading && <p className="text-sm text-muted-foreground">Loading results…</p>}
+      {!isLoading && !data?.election && (
+        <p className="text-sm text-muted-foreground">This election could not be found.</p>
+      )}
 
-      <div className="mt-8 space-y-8">
-        {election.positions.map((pos) => {
-          const tallies = pos.candidates.map((c) => ({
-            cand: c,
-            votes: results[c.id] ?? 0,
-          }));
-          const total = tallies.reduce((a, b) => a + b.votes, 0) || 1;
-          const sorted = [...tallies].sort((a, b) => b.votes - a.votes);
-          const elected = new Set(sorted.slice(0, pos.seats).map((t) => t.cand.id));
+      {data?.election && (
+        <>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">{data.election.title}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {data.election.organisation} · Closed {formatDateTime(data.election.closesAt)} ·{" "}
+                {data.totalVotes.toLocaleString()} votes counted
+              </p>
+            </div>
+            <div className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-medium text-success">
+              <ShieldCheck className="h-3.5 w-3.5" /> Hash chain verified
+            </div>
+          </div>
 
-          return (
-            <section
-              key={pos.id}
-              className="rounded-xl border border-border bg-card p-6 shadow-[var(--shadow-card)]"
-            >
-              <div className="mb-5 flex items-baseline justify-between">
-                <h2 className="text-lg font-semibold">{pos.title}</h2>
-                <span className="text-xs text-muted-foreground">{pos.seats} seat{pos.seats > 1 ? "s" : ""}</span>
-              </div>
-              <ol className="space-y-3">
-                {sorted.map((t, idx) => {
-                  const pct = (t.votes / total) * 100;
-                  const isElected = elected.has(t.cand.id);
-                  return (
-                    <li key={t.cand.id}>
-                      <div className="flex items-baseline justify-between gap-2 text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="w-4 font-mono text-xs text-muted-foreground">{idx + 1}</span>
-                          <span className="font-medium">{t.cand.name}</span>
-                          {isElected && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success">
-                              <Trophy className="h-3 w-3" /> Elected
+          <div className="mt-8 space-y-8">
+            {data.positions.map((pos) => {
+              const tallies = pos.candidates.map((c) => ({ cand: c, votes: data.counts[c.id] ?? 0 }));
+              const total = tallies.reduce((a, b) => a + b.votes, 0) || 1;
+              const sorted = [...tallies].sort((a, b) => b.votes - a.votes);
+              const elected = new Set(sorted.slice(0, pos.seats).map((t) => t.cand.id));
+
+              return (
+                <section
+                  key={pos.id}
+                  className="rounded-xl border border-border bg-card p-6 shadow-[var(--shadow-card)]"
+                >
+                  <div className="mb-5 flex items-baseline justify-between">
+                    <h2 className="text-lg font-semibold">{pos.title}</h2>
+                    <span className="text-xs text-muted-foreground">
+                      {pos.seats} seat{pos.seats > 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <ol className="space-y-3">
+                    {sorted.map((t, idx) => {
+                      const pct = (t.votes / total) * 100;
+                      const isElected = elected.has(t.cand.id);
+                      return (
+                        <li key={t.cand.id}>
+                          <div className="flex items-baseline justify-between gap-2 text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="w-4 font-mono text-xs text-muted-foreground">{idx + 1}</span>
+                              <span className="font-medium">{t.cand.name}</span>
+                              {isElected && t.votes > 0 && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success">
+                                  <Trophy className="h-3 w-3" /> Elected
+                                </span>
+                              )}
+                            </div>
+                            <span className="font-mono text-xs text-muted-foreground">
+                              {t.votes.toLocaleString()} · {pct.toFixed(1)}%
                             </span>
-                          )}
-                        </div>
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {t.votes.toLocaleString()} · {pct.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className={isElected ? "h-full bg-success" : "h-full bg-primary/60"}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            </section>
-          );
-        })}
-      </div>
+                          </div>
+                          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-muted">
+                            <div
+                              className={isElected ? "h-full bg-success" : "h-full bg-primary/60"}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </section>
+              );
+            })}
+          </div>
+        </>
+      )}
     </AppShell>
   );
 }
