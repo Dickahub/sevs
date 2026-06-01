@@ -1,20 +1,21 @@
-import { createFileRoute, Link, useNavigate, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { AppShell } from "@/components/sevs/AppShell";
-import { getElection, formatDateTime, type Election } from "@/lib/sevs-data";
+import { getElectionDetail } from "@/lib/sevs-read.functions";
+import { castBallot } from "@/lib/sevs.functions";
+import { formatDateTime } from "@/lib/sevs-types";
+import { requireAuth } from "@/lib/sevs-guard";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Lock, ShieldCheck, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Lock, ShieldCheck, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/vote/$electionId")({
-  loader: ({ params }) => {
-    const election = getElection(params.electionId);
-    if (!election) throw notFound();
-    return { election };
-  },
-  head: ({ loaderData }) => ({
+  beforeLoad: () => requireAuth(),
+  head: () => ({
     meta: [
-      { title: `${loaderData?.election.title ?? "Ballot"} · SEVS` },
+      { title: "Ballot · SEVS" },
       { name: "description", content: "Cast your encrypted ballot. Your selections are never linked back to you." },
     ],
   }),
@@ -22,11 +23,20 @@ export const Route = createFileRoute("/vote/$electionId")({
 });
 
 function BallotPage() {
-  const { election } = Route.useLoaderData() as { election: Election };
+  const { electionId } = Route.useParams();
   const navigate = useNavigate();
-  // selections[positionId] = Set of candidate ids
+  const fetchDetail = useServerFn(getElectionDetail);
+  const submitBallot = useServerFn(castBallot);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["election-detail", electionId],
+    queryFn: () => fetchDetail({ data: { electionId } }),
+  });
+
   const [sel, setSel] = useState<Record<string, Set<string>>>({});
   const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   function toggle(positionId: string, candidateId: string, seats: number) {
     setSel((prev) => {
@@ -34,19 +44,77 @@ function BallotPage() {
       if (current.has(candidateId)) {
         current.delete(candidateId);
       } else {
-        if (seats === 1) {
-          current.clear();
-        } else if (current.size >= seats) {
-          return prev;
-        }
+        if (seats === 1) current.clear();
+        else if (current.size >= seats) return prev;
         current.add(candidateId);
       }
       return { ...prev, [positionId]: current };
     });
   }
 
-  const totalPositions = election.positions.length;
-  const completed = election.positions.filter((p) => (sel[p.id]?.size ?? 0) > 0).length;
+  async function handleSubmit() {
+    if (!data?.election) return;
+    setSubmitting(true);
+    setError("");
+    const selections = (data.positions ?? [])
+      .map((p) => ({ positionId: p.id, candidateIds: Array.from(sel[p.id] ?? []) }))
+      .filter((s) => s.candidateIds.length > 0);
+    const res = await submitBallot({ data: { electionId, selections } });
+    setSubmitting(false);
+    if (!res.success) {
+      setError(res.error);
+      setConfirming(false);
+      return;
+    }
+    navigate({ to: "/vote/$electionId/cast", params: { electionId } });
+  }
+
+  if (isLoading) {
+    return (
+      <AppShell>
+        <p className="text-sm text-muted-foreground">Loading ballot…</p>
+      </AppShell>
+    );
+  }
+
+  if (!data?.election) {
+    return (
+      <AppShell>
+        <p className="text-sm text-muted-foreground">This election could not be found.</p>
+      </AppShell>
+    );
+  }
+
+  const election = data.election;
+  const positions = data.positions;
+
+  if (data.hasVoted) {
+    return (
+      <AppShell>
+        <Link
+          to="/dashboard"
+          className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to elections
+        </Link>
+        <div className="mx-auto max-w-md rounded-xl border border-border bg-card p-8 text-center shadow-[var(--shadow-card)]">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success/15 text-success">
+            <CheckCircle2 className="h-7 w-7" />
+          </div>
+          <h1 className="mt-5 text-xl font-semibold">You have already voted</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your ballot for {election.title} was recorded. Each voter may cast one ballot only.
+          </p>
+          <Link to="/vote/$electionId/cast" params={{ electionId }}>
+            <Button className="mt-5">View your receipt</Button>
+          </Link>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const totalPositions = positions.length;
+  const completed = positions.filter((p) => (sel[p.id]?.size ?? 0) > 0).length;
 
   return (
     <AppShell>
@@ -66,12 +134,12 @@ function BallotPage() {
 
           <div className="mt-6 flex items-center gap-2 rounded-md border border-success/30 bg-success/10 p-3 text-sm text-success">
             <Lock className="h-4 w-4" />
-            Your selections will be encrypted in your browser before submission.
+            Your selections are recorded anonymously and never linked back to you.
           </div>
 
           <div className="mt-8 space-y-8">
-            {election.positions.map((pos) => {
-              const chosen = sel[pos.id] ?? new Set();
+            {positions.map((pos) => {
+              const chosen = sel[pos.id] ?? new Set<string>();
               return (
                 <section key={pos.id}>
                   <header className="mb-3 flex items-baseline justify-between">
@@ -92,18 +160,14 @@ function BallotPage() {
                           onClick={() => toggle(pos.id, cand.id, pos.seats)}
                           className={cn(
                             "flex w-full items-start gap-4 rounded-xl border bg-card p-4 text-left transition-all",
-                            active
-                              ? "border-success ring-2 ring-success/30"
-                              : "border-border hover:border-primary/40",
+                            active ? "border-success ring-2 ring-success/30" : "border-border hover:border-primary/40",
                             disabled && "cursor-not-allowed opacity-50",
                           )}
                         >
                           <div
                             className={cn(
                               "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
-                              active
-                                ? "bg-success text-success-foreground"
-                                : "bg-secondary text-secondary-foreground",
+                              active ? "bg-success text-success-foreground" : "bg-secondary text-secondary-foreground",
                             )}
                           >
                             {cand.initials}
@@ -118,9 +182,7 @@ function BallotPage() {
                           <div
                             className={cn(
                               "mt-1 h-5 w-5 shrink-0 rounded-md border",
-                              active
-                                ? "border-success bg-success text-success-foreground"
-                                : "border-border bg-background",
+                              active ? "border-success bg-success text-success-foreground" : "border-border bg-background",
                             )}
                           >
                             {active && (
@@ -159,12 +221,12 @@ function BallotPage() {
             <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full bg-primary transition-all"
-                style={{ width: `${(completed / totalPositions) * 100}%` }}
+                style={{ width: `${totalPositions ? (completed / totalPositions) * 100 : 0}%` }}
               />
             </div>
 
             <div className="mt-4 space-y-3 text-sm">
-              {election.positions.map((pos) => {
+              {positions.map((pos) => {
                 const chosen = Array.from(sel[pos.id] ?? []);
                 return (
                   <div key={pos.id} className="text-xs">
@@ -186,13 +248,10 @@ function BallotPage() {
               })}
             </div>
 
-            <Button
-              className="mt-5 w-full"
-              onClick={() => setConfirming(true)}
-              disabled={completed === 0}
-            >
-              Review & submit
+            <Button className="mt-5 w-full" onClick={() => setConfirming(true)} disabled={completed === 0}>
+              Review &amp; submit
             </Button>
+            {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
             <p className="mt-3 flex items-start gap-1.5 text-xs text-muted-foreground">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               Once submitted, your ballot cannot be modified.
@@ -204,7 +263,7 @@ function BallotPage() {
       {confirming && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm"
-          onClick={() => setConfirming(false)}
+          onClick={() => !submitting && setConfirming(false)}
         >
           <div
             className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-[var(--shadow-elevated)]"
@@ -215,23 +274,16 @@ function BallotPage() {
             </div>
             <h3 className="mt-4 text-lg font-semibold">Confirm your ballot</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Your ballot will be encrypted with the election public key and signed before
-              submission. This action cannot be undone.
+              Your ballot will be recorded anonymously and a verifiable receipt generated. This
+              action cannot be undone.
             </p>
-            <div className="mt-4 rounded-md bg-muted/60 p-3 text-xs font-mono text-muted-foreground">
-              ballot.sha256 = <span className="text-foreground">f3a9…1d8e</span>
-            </div>
+            {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
             <div className="mt-5 flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setConfirming(false)}>
+              <Button variant="outline" className="flex-1" onClick={() => setConfirming(false)} disabled={submitting}>
                 Review again
               </Button>
-              <Button
-                className="flex-1"
-                onClick={() =>
-                  navigate({ to: "/vote/$electionId/cast", params: { electionId: election.id } })
-                }
-              >
-                Encrypt & submit
+              <Button className="flex-1" onClick={handleSubmit} disabled={submitting}>
+                {submitting ? "Submitting…" : "Submit ballot"}
               </Button>
             </div>
           </div>
