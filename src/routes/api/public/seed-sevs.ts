@@ -83,7 +83,7 @@ async function seedElections() {
       organisation: "Faculty of Engineering",
       status: "open",
       opens_at: new Date(now - 2 * day).toISOString(),
-      closes_at: new Date(now + 3 * day).toISOString(),
+      closes_at: new Date(now + 45 * day).toISOString(),
       eligible_voters: 2840,
     })
     .select("id")
@@ -116,7 +116,7 @@ async function seedElections() {
       organisation: "Department of Computing",
       status: "open",
       opens_at: new Date(now - day).toISOString(),
-      closes_at: new Date(now + 2 * day).toISOString(),
+      closes_at: new Date(now + 45 * day).toISOString(),
       eligible_voters: 412,
     })
     .select("id")
