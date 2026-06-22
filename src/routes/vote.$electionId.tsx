@@ -12,6 +12,7 @@ import { ArrowLeft, Lock, ShieldCheck, AlertTriangle, CheckCircle2 } from "lucid
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/vote/$electionId")({
+  ssr: false,
   beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [

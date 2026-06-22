@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Clock, Users } from "lucide-react";
 
 export const Route = createFileRoute("/dashboard")({
+  ssr: false,
   beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [
