@@ -1,4 +1,4 @@
-import type { ElectionStatus } from "@/lib/sevs-data";
+import type { ElectionStatus } from "@/lib/sevs-types";
 import { cn } from "@/lib/utils";
 
 const map: Record<ElectionStatus, { label: string; cls: string }> = {
