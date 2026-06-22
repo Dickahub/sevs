@@ -8,6 +8,7 @@ import { requireAuth } from "@/lib/sevs-guard";
 import { ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/audit")({
+  ssr: false,
   beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [

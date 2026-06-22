@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/vote/$electionId/cast")({
+  ssr: false,
   beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [

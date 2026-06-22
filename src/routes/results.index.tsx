@@ -9,6 +9,7 @@ import { requireAuth } from "@/lib/sevs-guard";
 import { ArrowRight, Lock } from "lucide-react";
 
 export const Route = createFileRoute("/results/")({
+  ssr: false,
   beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [

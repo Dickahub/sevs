@@ -9,6 +9,7 @@ import { requireAuth } from "@/lib/sevs-guard";
 import { Users, Vote, ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/admin")({
+  ssr: false,
   beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [

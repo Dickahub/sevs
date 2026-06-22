@@ -8,6 +8,7 @@ import { requireAuth } from "@/lib/sevs-guard";
 import { ArrowLeft, ShieldCheck, Trophy } from "lucide-react";
 
 export const Route = createFileRoute("/results/$electionId")({
+  ssr: false,
   beforeLoad: () => requireAuth(),
   head: () => ({
     meta: [
