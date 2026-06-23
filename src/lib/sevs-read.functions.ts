@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { effectiveStatus } from "@/lib/sevs-types";
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -30,7 +31,9 @@ function normalizeElection(e: ElectionRow, ballotsCast: number) {
     id: e.id,
     title: e.title,
     organisation: e.organisation,
-    status: e.status as "draft" | "open" | "closed",
+    // Status is derived from the configured window so elections open/close
+    // automatically at the scheduled times.
+    status: effectiveStatus(e.opens_at, e.closes_at),
     opensAt: e.opens_at,
     closesAt: e.closes_at,
     eligibleVoters: e.eligible_voters,
@@ -82,13 +85,14 @@ export const getMe = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("full_name, student_id")
+      .select("full_name, student_id, is_active")
       .eq("id", context.userId)
       .maybeSingle();
     return {
       userId: context.userId,
       fullName: profile?.full_name ?? null,
       studentId: profile?.student_id ?? null,
+      isActive: profile?.is_active ?? true,
       isAdmin: await isAdmin(context.userId),
     };
   });
@@ -97,15 +101,25 @@ export const getMe = createServerFn({ method: "GET" })
 
 export const getElections = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async () => {
+  .handler(async ({ context }) => {
     const { data: elections } = await supabaseAdmin
       .from("elections")
       .select("id, title, organisation, status, opens_at, closes_at, eligible_voters")
       .order("created_at", { ascending: true });
     const counts = await ballotCounts();
-    return {
-      elections: (elections ?? []).map((e) => normalizeElection(e, counts[e.id] ?? 0)),
-    };
+    let rows = (elections ?? []).map((e) => normalizeElection(e, counts[e.id] ?? 0));
+
+    // Voters only see elections they are eligible for; admins see everything.
+    if (!(await isAdmin(context.userId))) {
+      const { data: myElig } = await supabaseAdmin
+        .from("election_eligibility")
+        .select("election_id")
+        .eq("voter_id", context.userId);
+      const allowed = new Set((myElig ?? []).map((r) => r.election_id));
+      rows = rows.filter((e) => allowed.has(e.id));
+    }
+
+    return { elections: rows };
   });
 
 // ---- election detail (ballot) ----------------------------------------------

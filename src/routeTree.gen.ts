@@ -16,6 +16,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResultsIndexRouteImport } from './routes/results.index'
 import { Route as VoteElectionIdRouteImport } from './routes/vote.$electionId'
+import { Route as SetupTokenRouteImport } from './routes/setup.$token'
 import { Route as ResultsElectionIdRouteImport } from './routes/results.$electionId'
 import { Route as VoteElectionIdCastRouteImport } from './routes/vote.$electionId.cast'
 import { Route as ApiPublicSeedSevsRouteImport } from './routes/api/public/seed-sevs'
@@ -55,6 +56,11 @@ const VoteElectionIdRoute = VoteElectionIdRouteImport.update({
   path: '/vote/$electionId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SetupTokenRoute = SetupTokenRouteImport.update({
+  id: '/setup/$token',
+  path: '/setup/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResultsElectionIdRoute = ResultsElectionIdRouteImport.update({
   id: '/results/$electionId',
   path: '/results/$electionId',
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/results/$electionId': typeof ResultsElectionIdRoute
+  '/setup/$token': typeof SetupTokenRoute
   '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
   '/results/': typeof ResultsIndexRoute
   '/api/public/seed-sevs': typeof ApiPublicSeedSevsRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/results/$electionId': typeof ResultsElectionIdRoute
+  '/setup/$token': typeof SetupTokenRoute
   '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
   '/results': typeof ResultsIndexRoute
   '/api/public/seed-sevs': typeof ApiPublicSeedSevsRoute
@@ -103,6 +111,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/results/$electionId': typeof ResultsElectionIdRoute
+  '/setup/$token': typeof SetupTokenRoute
   '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
   '/results/': typeof ResultsIndexRoute
   '/api/public/seed-sevs': typeof ApiPublicSeedSevsRoute
@@ -117,6 +126,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/results/$electionId'
+    | '/setup/$token'
     | '/vote/$electionId'
     | '/results/'
     | '/api/public/seed-sevs'
@@ -129,6 +139,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/results/$electionId'
+    | '/setup/$token'
     | '/vote/$electionId'
     | '/results'
     | '/api/public/seed-sevs'
@@ -141,6 +152,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/login'
     | '/results/$electionId'
+    | '/setup/$token'
     | '/vote/$electionId'
     | '/results/'
     | '/api/public/seed-sevs'
@@ -154,6 +166,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
   ResultsElectionIdRoute: typeof ResultsElectionIdRoute
+  SetupTokenRoute: typeof SetupTokenRoute
   VoteElectionIdRoute: typeof VoteElectionIdRouteWithChildren
   ResultsIndexRoute: typeof ResultsIndexRoute
   ApiPublicSeedSevsRoute: typeof ApiPublicSeedSevsRoute
@@ -210,6 +223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VoteElectionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/setup/$token': {
+      id: '/setup/$token'
+      path: '/setup/$token'
+      fullPath: '/setup/$token'
+      preLoaderRoute: typeof SetupTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/results/$electionId': {
       id: '/results/$electionId'
       path: '/results/$electionId'
@@ -253,6 +273,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
   ResultsElectionIdRoute: ResultsElectionIdRoute,
+  SetupTokenRoute: SetupTokenRoute,
   VoteElectionIdRoute: VoteElectionIdRouteWithChildren,
   ResultsIndexRoute: ResultsIndexRoute,
   ApiPublicSeedSevsRoute: ApiPublicSeedSevsRoute,
@@ -260,13 +281,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
