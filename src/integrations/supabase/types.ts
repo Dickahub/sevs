@@ -78,28 +78,34 @@ export type Database = {
       }
       candidates: {
         Row: {
+          bio: string | null
           id: string
           name: string
           position_id: string
           programme: string | null
           sort_order: number
           statement: string | null
+          voter_id: string | null
         }
         Insert: {
+          bio?: string | null
           id?: string
           name: string
           position_id: string
           programme?: string | null
           sort_order?: number
           statement?: string | null
+          voter_id?: string | null
         }
         Update: {
+          bio?: string | null
           id?: string
           name?: string
           position_id?: string
           programme?: string | null
           sort_order?: number
           statement?: string | null
+          voter_id?: string | null
         }
         Relationships: [
           {
@@ -111,34 +117,98 @@ export type Database = {
           },
         ]
       }
+      election_eligibility: {
+        Row: {
+          created_at: string
+          election_id: string
+          id: string
+          voter_id: string
+        }
+        Insert: {
+          created_at?: string
+          election_id: string
+          id?: string
+          voter_id: string
+        }
+        Update: {
+          created_at?: string
+          election_id?: string
+          id?: string
+          voter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "election_eligibility_election_id_fkey"
+            columns: ["election_id"]
+            isOneToOne: false
+            referencedRelation: "elections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      election_keys: {
+        Row: {
+          created_at: string
+          election_id: string
+          encrypted_private_key: string
+          key_algorithm: string
+        }
+        Insert: {
+          created_at?: string
+          election_id: string
+          encrypted_private_key: string
+          key_algorithm?: string
+        }
+        Update: {
+          created_at?: string
+          election_id?: string
+          encrypted_private_key?: string
+          key_algorithm?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "election_keys_election_id_fkey"
+            columns: ["election_id"]
+            isOneToOne: true
+            referencedRelation: "elections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       elections: {
         Row: {
           closes_at: string
           created_at: string
+          description: string | null
           eligible_voters: number
           id: string
           opens_at: string
           organisation: string
+          public_key: string | null
           status: string
           title: string
         }
         Insert: {
           closes_at: string
           created_at?: string
+          description?: string | null
           eligible_voters?: number
           id?: string
           opens_at: string
           organisation: string
+          public_key?: string | null
           status?: string
           title: string
         }
         Update: {
           closes_at?: string
           created_at?: string
+          description?: string | null
           eligible_voters?: number
           id?: string
           opens_at?: string
           organisation?: string
+          public_key?: string | null
           status?: string
           title?: string
         }
@@ -179,20 +249,26 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          email: string | null
           full_name: string | null
           id: string
+          is_active: boolean
           student_id: string | null
         }
         Insert: {
           created_at?: string
+          email?: string | null
           full_name?: string | null
           id: string
+          is_active?: boolean
           student_id?: string | null
         }
         Update: {
           created_at?: string
+          email?: string | null
           full_name?: string | null
           id?: string
+          is_active?: boolean
           student_id?: string | null
         }
         Relationships: []
@@ -212,6 +288,33 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      voter_setup_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          token_hash: string
+          used_at: string | null
+          voter_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          token_hash: string
+          used_at?: string | null
+          voter_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          token_hash?: string
+          used_at?: string | null
+          voter_id?: string
         }
         Relationships: []
       }

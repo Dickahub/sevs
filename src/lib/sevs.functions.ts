@@ -52,17 +52,41 @@ export const castBallot = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const voterId = context.userId;
 
-    // 1. Election must exist and be open.
+    // 0. Account must be active.
+    const { data: prof } = await supabaseAdmin
+      .from("profiles")
+      .select("is_active")
+      .eq("id", voterId)
+      .maybeSingle();
+    if (prof && prof.is_active === false) {
+      return { success: false as const, error: "Your account is inactive. Contact an administrator." };
+    }
+
+    // 1. Election must exist and be within its voting window (status is derived
+    //    from the configured times, so it opens/closes automatically).
     const { data: election, error: elErr } = await supabaseAdmin
       .from("elections")
       .select("id, status, opens_at, closes_at")
       .eq("id", data.electionId)
       .single();
     if (elErr || !election) return { success: false as const, error: "Election not found." };
-    if (election.status !== "open") return { success: false as const, error: "This election is not open for voting." };
     const nowMs = Date.now();
-    if (nowMs < new Date(election.opens_at).getTime() || nowMs > new Date(election.closes_at).getTime()) {
+    if (nowMs < new Date(election.opens_at).getTime()) {
+      return { success: false as const, error: "This election has not opened yet." };
+    }
+    if (nowMs > new Date(election.closes_at).getTime()) {
       return { success: false as const, error: "Voting is closed for this election." };
+    }
+
+    // 1b. Voter must be on the election's eligibility list.
+    const { data: elig } = await supabaseAdmin
+      .from("election_eligibility")
+      .select("id")
+      .eq("election_id", data.electionId)
+      .eq("voter_id", voterId)
+      .maybeSingle();
+    if (!elig) {
+      return { success: false as const, error: "You are not eligible to vote in this election." };
     }
 
     // 2. One voter, one ballot.

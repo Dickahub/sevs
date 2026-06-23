@@ -51,6 +51,70 @@ export function turnoutPct(eligible: number, ballots: number) {
   return Math.round((ballots / eligible) * 100);
 }
 
+// Elections move through their lifecycle automatically based on the configured
+// window: DRAFT before the start time, OPEN during the window, CLOSED after.
+export function effectiveStatus(opensAt: string, closesAt: string): ElectionStatus {
+  const now = Date.now();
+  if (now < new Date(opensAt).getTime()) return "draft";
+  if (now <= new Date(closesAt).getTime()) return "open";
+  return "closed";
+}
+
+// ---- admin DTOs -------------------------------------------------------------
+
+export interface VoterRow {
+  id: string;
+  fullName: string | null;
+  studentNumber: string | null;
+  email: string | null;
+  isActive: boolean;
+  hasPendingSetup: boolean;
+  createdAt: string;
+}
+
+export interface AdminPosition {
+  id: string;
+  title: string;
+  seats: number;
+}
+
+export interface AdminElection {
+  id: string;
+  title: string;
+  organisation: string;
+  description: string | null;
+  status: ElectionStatus;
+  opensAt: string;
+  closesAt: string;
+  hasOpened: boolean;
+  eligibleCount: number;
+  candidateCount: number;
+  positions: AdminPosition[];
+}
+
+export interface EligibilityVoter {
+  id: string;
+  fullName: string | null;
+  studentNumber: string | null;
+  email: string | null;
+  isActive: boolean;
+  eligible: boolean;
+}
+
+export interface AdminCandidate {
+  id: string;
+  voterId: string | null;
+  name: string;
+  bio: string;
+}
+
+export interface AdminCandidatePosition {
+  id: string;
+  title: string;
+  seats: number;
+  candidates: AdminCandidate[];
+}
+
 export function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     dateStyle: "medium",
