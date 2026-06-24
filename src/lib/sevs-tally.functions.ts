@@ -112,7 +112,7 @@ export const closeAndTally = createServerFn({ method: "POST" })
 
     await supabaseAdmin
       .from("elections")
-      .update({ tally: tally as unknown as Record<string, unknown>, tallied_at: tally.computedAt })
+      .update({ tally: JSON.parse(JSON.stringify(tally)), tallied_at: tally.computedAt })
       .eq("id", data.electionId);
 
     await appendAudit(
