@@ -177,7 +177,7 @@ export const getElectionResults = createServerFn({ method: "GET" })
       return {
         election: null,
         positions: [],
-        counts: {},
+        counts: {} as Record<string, number>,
         ballotsCast: 0,
         totalVotes: 0,
         totalEligible: 0,
@@ -196,7 +196,7 @@ export const getElectionResults = createServerFn({ method: "GET" })
       return {
         election: normalizeElection(e, 0),
         positions: await loadPositions(data.electionId),
-        counts: {},
+        counts: {} as Record<string, number>,
         ballotsCast: 0,
         totalVotes: 0,
         totalEligible: e.eligible_voters,
