@@ -144,7 +144,7 @@ async function createOneVoter(input: VoterInput, actor: string): Promise<CreateV
     expires_at: expiresAt,
   });
 
-  await appendAudit(actor, "VOTER_CREATED", null);
+  await appendAudit(actor, "VOTER_CREATED", `email=${email}; student=${input.studentNumber}`, null);
   return { ok: true, voterId: created.user.id, token, expiresAt, ...base };
 }
 
@@ -186,7 +186,7 @@ export const resendSetupLink = createServerFn({ method: "POST" })
       expires_at: expiresAt,
     });
     if (error) return { ok: false as const, error: "Could not create a new setup link." };
-    await appendAudit(actorTag(context.userId), "SETUP_LINK_REISSUED", null);
+    await appendAudit(actorTag(context.userId), "SETUP_LINK_REISSUED", `voter=${data.voterId}`, null);
     return { ok: true as const, token, expiresAt };
   });
 
@@ -205,6 +205,7 @@ export const setVoterActive = createServerFn({ method: "POST" })
     await appendAudit(
       actorTag(context.userId),
       data.isActive ? "VOTER_ACTIVATED" : "VOTER_DEACTIVATED",
+      `voter=${data.voterId}`,
       null,
     );
     return { ok: true as const };
@@ -221,7 +222,7 @@ export const deleteVoter = createServerFn({ method: "POST" })
       .update({ is_active: false })
       .eq("id", data.voterId);
     if (error) return { ok: false as const, error: error.message };
-    await appendAudit(actorTag(context.userId), "VOTER_DELETED_SOFT", null);
+    await appendAudit(actorTag(context.userId), "VOTER_DELETED_SOFT", `voter=${data.voterId}`, null);
     return { ok: true as const };
   });
 
@@ -328,7 +329,7 @@ export const createElection = createServerFn({ method: "POST" })
       key_algorithm: "RSA-2048",
     });
 
-    await appendAudit(actorTag(context.userId), "ELECTION_CREATED", election.id);
+    await appendAudit(actorTag(context.userId), "ELECTION_CREATED", `title=${data.title}`, election.id);
     return { ok: true as const, electionId: election.id, passphrase };
   });
 
@@ -473,6 +474,7 @@ export const setEligibility = createServerFn({ method: "POST" })
     await appendAudit(
       actorTag(context.userId),
       data.eligible ? "ELIGIBILITY_ADDED" : "ELIGIBILITY_REMOVED",
+      `voter=${data.voterId}`,
       data.electionId,
     );
     return { ok: true as const };
@@ -573,7 +575,7 @@ export const addCandidate = createServerFn({ method: "POST" })
       return { ok: false as const, error: error.message };
     }
 
-    await appendAudit(actorTag(context.userId), "CANDIDATE_ADDED", position.election_id);
+    await appendAudit(actorTag(context.userId), "CANDIDATE_ADDED", `name=${profile.full_name ?? ""}`, position.election_id);
     return { ok: true as const };
   });
 
@@ -584,6 +586,6 @@ export const removeCandidate = createServerFn({ method: "POST" })
     await requireAdmin(context.userId);
     const { error } = await supabaseAdmin.from("candidates").delete().eq("id", data.candidateId);
     if (error) return { ok: false as const, error: error.message };
-    await appendAudit(actorTag(context.userId), "CANDIDATE_REMOVED", null);
+    await appendAudit(actorTag(context.userId), "CANDIDATE_REMOVED", `candidate=${data.candidateId}`, null);
     return { ok: true as const };
   });
