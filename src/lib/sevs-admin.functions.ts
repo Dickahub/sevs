@@ -1,40 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { appendAudit, sha256 } from "@/lib/sevs-audit.server";
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-const GENESIS = "0".repeat(64);
-
-function sha256(input: string) {
-  return createHash("sha256").update(input).digest("hex");
-}
-
-// Append a tamper-evident entry to the SHA-256 hash-chained audit log.
-async function appendAudit(actor: string, action: string, electionId: string | null) {
-  const { data: last } = await supabaseAdmin
-    .from("audit_log")
-    .select("hash")
-    .order("seq", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const prevHash = last?.hash ?? GENESIS;
-  const ts = new Date().toISOString();
-  const hash = sha256(`${prevHash}|${ts}|${actor}|${action}|${electionId ?? ""}`);
-  await supabaseAdmin.from("audit_log").insert({
-    ts,
-    actor,
-    action,
-    election_id: electionId,
-    prev_hash: prevHash,
-    hash,
-  });
-}
 
 async function requireAdmin(userId: string) {
   const { data } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", userId);
