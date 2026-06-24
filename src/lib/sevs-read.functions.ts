@@ -139,7 +139,7 @@ export const getElectionDetail = createServerFn({ method: "GET" })
     const positions = await loadPositions(data.electionId);
     const { data: receipt } = await supabaseAdmin
       .from("ballot_receipts")
-      .select("ballot_hash, cast_at")
+      .select("ballot_hash, cast_at, receipt_token")
       .eq("election_id", data.electionId)
       .eq("voter_id", context.userId)
       .maybeSingle();
