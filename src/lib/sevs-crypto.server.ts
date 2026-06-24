@@ -16,11 +16,12 @@ function b64(buf: ArrayBuffer | Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
 }
 
-function fromB64(s: string): Uint8Array {
-  return new Uint8Array(Buffer.from(s, "base64"));
+function fromB64(s: string): ArrayBuffer {
+  const buf = Buffer.from(s, "base64");
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
-function pemToDer(pem: string, label: string): Uint8Array {
+function pemToDer(pem: string, label: string): ArrayBuffer {
   const body = pem
     .replace(`-----BEGIN ${label}-----`, "")
     .replace(`-----END ${label}-----`, "")
