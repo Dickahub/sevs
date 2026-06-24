@@ -18,7 +18,6 @@ export type Database = {
         Row: {
           action: string
           actor: string
-          details: string
           election_id: string | null
           hash: string
           prev_hash: string
@@ -28,7 +27,6 @@ export type Database = {
         Insert: {
           action: string
           actor: string
-          details?: string
           election_id?: string | null
           hash: string
           prev_hash: string
@@ -38,7 +36,6 @@ export type Database = {
         Update: {
           action?: string
           actor?: string
-          details?: string
           election_id?: string | null
           hash?: string
           prev_hash?: string
@@ -53,7 +50,6 @@ export type Database = {
           cast_at: string
           election_id: string
           id: string
-          receipt_token: string | null
           voter_id: string
         }
         Insert: {
@@ -61,7 +57,6 @@ export type Database = {
           cast_at?: string
           election_id: string
           id?: string
-          receipt_token?: string | null
           voter_id: string
         }
         Update: {
@@ -69,53 +64,11 @@ export type Database = {
           cast_at?: string
           election_id?: string
           id?: string
-          receipt_token?: string | null
           voter_id?: string
         }
         Relationships: [
           {
             foreignKeyName: "ballot_receipts_election_id_fkey"
-            columns: ["election_id"]
-            isOneToOne: false
-            referencedRelation: "elections"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      ballots: {
-        Row: {
-          ballot_hash: string
-          ciphertext: string
-          created_at: string
-          election_id: string
-          encrypted_key: string
-          id: string
-          iv: string
-          signature: string
-        }
-        Insert: {
-          ballot_hash: string
-          ciphertext: string
-          created_at?: string
-          election_id: string
-          encrypted_key: string
-          id?: string
-          iv: string
-          signature: string
-        }
-        Update: {
-          ballot_hash?: string
-          ciphertext?: string
-          created_at?: string
-          election_id?: string
-          encrypted_key?: string
-          id?: string
-          iv?: string
-          signature?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ballots_election_id_fkey"
             columns: ["election_id"]
             isOneToOne: false
             referencedRelation: "elections"
@@ -168,25 +121,19 @@ export type Database = {
         Row: {
           created_at: string
           election_id: string
-          has_voted: boolean
           id: string
-          voted_at: string | null
           voter_id: string
         }
         Insert: {
           created_at?: string
           election_id: string
-          has_voted?: boolean
           id?: string
-          voted_at?: string | null
           voter_id: string
         }
         Update: {
           created_at?: string
           election_id?: string
-          has_voted?: boolean
           id?: string
-          voted_at?: string | null
           voter_id?: string
         }
         Relationships: [
@@ -238,10 +185,7 @@ export type Database = {
           opens_at: string
           organisation: string
           public_key: string | null
-          results_published: boolean
           status: string
-          tallied_at: string | null
-          tally: Json | null
           title: string
         }
         Insert: {
@@ -253,10 +197,7 @@ export type Database = {
           opens_at: string
           organisation: string
           public_key?: string | null
-          results_published?: boolean
           status?: string
-          tallied_at?: string | null
-          tally?: Json | null
           title: string
         }
         Update: {
@@ -268,10 +209,7 @@ export type Database = {
           opens_at?: string
           organisation?: string
           public_key?: string | null
-          results_published?: boolean
           status?: string
-          tallied_at?: string | null
-          tally?: Json | null
           title?: string
         }
         Relationships: []
@@ -332,27 +270,6 @@ export type Database = {
           id?: string
           is_active?: boolean
           student_id?: string | null
-        }
-        Relationships: []
-      }
-      system_keys: {
-        Row: {
-          created_at: string
-          id: boolean
-          signing_private_key: string
-          signing_public_key: string
-        }
-        Insert: {
-          created_at?: string
-          id?: boolean
-          signing_private_key: string
-          signing_public_key: string
-        }
-        Update: {
-          created_at?: string
-          id?: boolean
-          signing_private_key?: string
-          signing_public_key?: string
         }
         Relationships: []
       }
@@ -452,20 +369,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      cast_ballot_tx: {
-        Args: {
-          p_ballot_hash: string
-          p_ciphertext: string
-          p_election_id: string
-          p_encrypted_key: string
-          p_iv: string
-          p_receipt_hash: string
-          p_receipt_token: string
-          p_signature: string
-          p_voter_id: string
-        }
-        Returns: undefined
-      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
