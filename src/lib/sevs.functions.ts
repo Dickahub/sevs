@@ -1,37 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createHash } from "crypto";
+import { randomBytes } from "crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-
-const GENESIS = "0".repeat(64);
-
-function sha256(input: string) {
-  return createHash("sha256").update(input).digest("hex");
-}
-
-// Append a tamper-evident entry to the SHA-256 hash-chained audit log.
-async function appendAudit(actor: string, action: string, electionId: string | null) {
-  const { data: last } = await supabaseAdmin
-    .from("audit_log")
-    .select("hash")
-    .order("seq", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const prevHash = last?.hash ?? GENESIS;
-  const ts = new Date().toISOString();
-  const hash = sha256(`${prevHash}|${ts}|${actor}|${action}|${electionId ?? ""}`);
-
-  await supabaseAdmin.from("audit_log").insert({
-    ts,
-    actor,
-    action,
-    election_id: electionId,
-    prev_hash: prevHash,
-    hash,
-  });
-}
+import { appendAudit, sha256 } from "@/lib/sevs-audit.server";
+import { hybridEncrypt, signData } from "@/lib/sevs-crypto.server";
+import { effectiveStatus } from "@/lib/sevs-types";
 
 const castSchema = z.object({
   electionId: z.string().uuid(),
@@ -46,6 +20,11 @@ const castSchema = z.object({
     .max(50),
 });
 
+// REQ-VOTE: cast an encrypted, anonymous ballot.
+// Validates JWT (middleware), active account, OPEN election, eligibility, and
+// the one-vote guard; encrypts the ballot with the election public key (hybrid
+// AES-256 + RSA-OAEP), signs the ballot hash (RSA-SHA256), then stores the
+// ballot and marks the voter as having voted inside a single transaction.
 export const castBallot = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => castSchema.parse(input))
@@ -62,50 +41,46 @@ export const castBallot = createServerFn({ method: "POST" })
       return { success: false as const, error: "Your account is inactive. Contact an administrator." };
     }
 
-    // 1. Election must exist and be within its voting window (status is derived
-    //    from the configured times, so it opens/closes automatically).
+    // 1. Election must exist and be OPEN.
     const { data: election, error: elErr } = await supabaseAdmin
       .from("elections")
-      .select("id, status, opens_at, closes_at")
+      .select("id, opens_at, closes_at, public_key")
       .eq("id", data.electionId)
       .single();
     if (elErr || !election) return { success: false as const, error: "Election not found." };
-    const nowMs = Date.now();
-    if (nowMs < new Date(election.opens_at).getTime()) {
+    const status = effectiveStatus(election.opens_at, election.closes_at);
+    if (status === "draft") {
       return { success: false as const, error: "This election has not opened yet." };
     }
-    if (nowMs > new Date(election.closes_at).getTime()) {
+    if (status === "closed") {
       return { success: false as const, error: "Voting is closed for this election." };
     }
+    if (!election.public_key) {
+      return { success: false as const, error: "This election is missing its encryption key." };
+    }
 
-    // 1b. Voter must be on the election's eligibility list.
+    // 2. Voter must be eligible and must not have already voted.
     const { data: elig } = await supabaseAdmin
       .from("election_eligibility")
-      .select("id")
+      .select("has_voted")
       .eq("election_id", data.electionId)
       .eq("voter_id", voterId)
       .maybeSingle();
     if (!elig) {
       return { success: false as const, error: "You are not eligible to vote in this election." };
     }
+    if (elig.has_voted) {
+      return { success: false as const, error: "You have already voted in this election." };
+    }
 
-    // 2. One voter, one ballot.
-    const { data: existing } = await supabaseAdmin
-      .from("ballot_receipts")
-      .select("id")
-      .eq("election_id", data.electionId)
-      .eq("voter_id", voterId)
-      .maybeSingle();
-    if (existing) return { success: false as const, error: "You have already voted in this election." };
-
-    // 3. Validate positions & candidates and seat limits.
+    // 3. Validate positions, candidates and seat limits.
     const { data: positions } = await supabaseAdmin
       .from("positions")
       .select("id, seats, candidates(id)")
       .eq("election_id", data.electionId);
     const posMap = new Map((positions ?? []).map((p) => [p.id, p]));
 
-    const voteRows: { election_id: string; position_id: string; candidate_id: string }[] = [];
+    const cleanSelections: { positionId: string; candidateIds: string[] }[] = [];
     for (const sel of data.selections) {
       const pos = posMap.get(sel.positionId);
       if (!pos) return { success: false as const, error: "Invalid position in ballot." };
@@ -119,70 +94,72 @@ export const castBallot = createServerFn({ method: "POST" })
       }
       for (const cid of sel.candidateIds) {
         if (!validCandidates.has(cid)) return { success: false as const, error: "Invalid candidate in ballot." };
-        voteRows.push({ election_id: data.electionId, position_id: sel.positionId, candidate_id: cid });
+      }
+      if (sel.candidateIds.length > 0) {
+        cleanSelections.push({ positionId: sel.positionId, candidateIds: sel.candidateIds });
       }
     }
 
-    // 4. Compute a verifiable receipt hash (does NOT reveal choices on-chain).
-    const ballotHash = sha256(
-      `${voterId}|${data.electionId}|${JSON.stringify(data.selections)}|${Date.now()}`,
-    );
-
-    // 5. Record the receipt FIRST (unique constraint is the real guard against
-    //    double voting under concurrency).
-    const { error: rcptErr } = await supabaseAdmin.from("ballot_receipts").insert({
-      election_id: data.electionId,
-      voter_id: voterId,
-      ballot_hash: ballotHash,
+    // 4. Build the plaintext ballot. A random nonce ensures identical choices
+    //    produce different ciphertexts (and an unlinkable content hash).
+    const nonce = randomBytes(16).toString("hex");
+    const plaintext = JSON.stringify({
+      electionId: data.electionId,
+      selections: cleanSelections,
+      castAt: new Date().toISOString(),
+      nonce,
     });
-    if (rcptErr) {
-      return { success: false as const, error: "You have already voted in this election." };
+    const ballotHash = sha256(plaintext);
+
+    // 5. Hybrid-encrypt the ballot and sign the ballot hash (RSA-SHA256).
+    let encrypted: Awaited<ReturnType<typeof hybridEncrypt>>;
+    let signature: string;
+    try {
+      encrypted = await hybridEncrypt(plaintext, election.public_key);
+      signature = await signData(ballotHash);
+    } catch {
+      return { success: false as const, error: "Failed to secure your ballot. Please try again." };
     }
 
-    // 6. Store the anonymous votes (no voter link → ballot secrecy).
-    if (voteRows.length > 0) {
-      const { error: voteErr } = await supabaseAdmin.from("votes").insert(voteRows);
-      if (voteErr) {
-        // Roll back the receipt so the voter can retry.
-        await supabaseAdmin
-          .from("ballot_receipts")
-          .delete()
-          .eq("election_id", data.electionId)
-          .eq("voter_id", voterId);
-        return { success: false as const, error: "Failed to record ballot. Please try again." };
+    // 6. Opaque, unguessable receipt token. Stored receipt fingerprint is a hash
+    //    of the token, NOT the ballot content hash, so the receipt cannot be
+    //    correlated to the encrypted ballot record.
+    const receiptToken = randomBytes(24).toString("base64url");
+    const receiptHash = sha256(receiptToken);
+
+    // 7. Atomic: store encrypted ballot + flip has_voted + store receipt.
+    const { error: txErr } = await supabaseAdmin.rpc("cast_ballot_tx", {
+      p_election_id: data.electionId,
+      p_voter_id: voterId,
+      p_ciphertext: encrypted.ciphertext,
+      p_iv: encrypted.iv,
+      p_encrypted_key: encrypted.encryptedKey,
+      p_signature: signature,
+      p_ballot_hash: ballotHash,
+      p_receipt_hash: receiptHash,
+      p_receipt_token: receiptToken,
+    });
+    if (txErr) {
+      if (txErr.message.includes("not_eligible_or_already_voted")) {
+        return { success: false as const, error: "You have already voted in this election." };
       }
+      return { success: false as const, error: "Failed to record ballot. Please try again." };
     }
 
-    await appendAudit("voter:#anon", "BALLOT_CAST", data.electionId);
+    // 8. Audit — hash reference only, never ballot content.
+    await appendAudit("SYSTEM", "BALLOT_SUBMITTED", `ballot_hash=${ballotHash.slice(0, 16)}…`, data.electionId);
 
-    return { success: true as const, ballotHash, castAt: new Date().toISOString() };
+    return {
+      success: true as const,
+      receiptToken,
+      receiptHash,
+      castAt: new Date().toISOString(),
+    };
   });
 
 const electionIdSchema = z.object({ electionId: z.string().uuid() });
 
-// Tallied results computed from the anonymous votes table (server-only access).
-export const getResults = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => electionIdSchema.parse(input))
-  .handler(async ({ data }) => {
-    const { data: votes } = await supabaseAdmin
-      .from("votes")
-      .select("candidate_id")
-      .eq("election_id", data.electionId);
-
-    const counts: Record<string, number> = {};
-    for (const v of votes ?? []) {
-      counts[v.candidate_id] = (counts[v.candidate_id] ?? 0) + 1;
-    }
-    const { count: ballots } = await supabaseAdmin
-      .from("ballot_receipts")
-      .select("id", { count: "exact", head: true })
-      .eq("election_id", data.electionId);
-
-    return { counts, ballotsCast: ballots ?? 0 };
-  });
-
-// Live turnout (ballots cast) for any election — safe aggregate, no identities.
+// Live turnout (ballots cast) — safe aggregate, no identities.
 export const getTurnout = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => electionIdSchema.parse(input))
@@ -194,16 +171,42 @@ export const getTurnout = createServerFn({ method: "GET" })
     return { ballotsCast: count ?? 0 };
   });
 
-// Whether the current user has already voted in an election.
+// Whether the current user has already voted, plus their receipt.
 export const getMyBallotStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => electionIdSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { data: receipt } = await supabaseAdmin
       .from("ballot_receipts")
-      .select("ballot_hash, cast_at")
+      .select("receipt_token, ballot_hash, cast_at")
       .eq("election_id", data.electionId)
       .eq("voter_id", context.userId)
       .maybeSingle();
     return { hasVoted: !!receipt, receipt: receipt ?? null };
+  });
+
+// REQ-VOTE: verify a receipt token confirms a vote was recorded — WITHOUT
+// revealing any ballot content. Returns only a boolean and the cast time.
+export const verifyReceipt = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({ token: z.string().trim().min(8).max(200) }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    const { data: rcpt } = await supabaseAdmin
+      .from("ballot_receipts")
+      .select("cast_at, election_id")
+      .eq("receipt_token", data.token)
+      .maybeSingle();
+    if (!rcpt) return { recorded: false as const };
+    const { data: election } = await supabaseAdmin
+      .from("elections")
+      .select("title")
+      .eq("id", rcpt.election_id)
+      .maybeSingle();
+    return {
+      recorded: true as const,
+      castAt: rcpt.cast_at,
+      electionTitle: election?.title ?? null,
+    };
   });

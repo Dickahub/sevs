@@ -139,7 +139,7 @@ export const getElectionDetail = createServerFn({ method: "GET" })
     const positions = await loadPositions(data.electionId);
     const { data: receipt } = await supabaseAdmin
       .from("ballot_receipts")
-      .select("ballot_hash, cast_at")
+      .select("ballot_hash, cast_at, receipt_token")
       .eq("election_id", data.electionId)
       .eq("voter_id", context.userId)
       .maybeSingle();
@@ -154,36 +154,79 @@ export const getElectionDetail = createServerFn({ method: "GET" })
 
 // ---- election results -------------------------------------------------------
 
+interface StoredTally {
+  perCandidate: Record<string, number>;
+  perPositionTotals: Record<string, number>;
+  decrypted: number;
+  invalid: number;
+  computedAt: string;
+}
+
+// REQ-RESULT: results are only accessible after the election CLOSES or is
+// RESULTS_PUBLISHED. No preview/partial count is exposed while OPEN.
 export const getElectionResults = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => electionIdSchema.parse(input))
   .handler(async ({ data }) => {
     const { data: e } = await supabaseAdmin
       .from("elections")
-      .select("id, title, organisation, status, opens_at, closes_at, eligible_voters")
+      .select("id, title, organisation, status, opens_at, closes_at, eligible_voters, results_published, tally, tallied_at")
       .eq("id", data.electionId)
       .maybeSingle();
-    if (!e) return { election: null, positions: [], counts: {}, ballotsCast: 0, totalVotes: 0 };
+    if (!e) {
+      return {
+        election: null,
+        positions: [],
+        counts: {} as Record<string, number>,
+        ballotsCast: 0,
+        totalVotes: 0,
+        totalEligible: 0,
+        participationRate: 0,
+        locked: false,
+        tallied: false,
+        published: false,
+      };
+    }
+
+    const status = effectiveStatus(e.opens_at, e.closes_at);
+    const published = e.results_published === true;
+
+    // Gate: while the election is OPEN (or still draft), no counts are exposed.
+    if (status !== "closed" && !published) {
+      return {
+        election: normalizeElection(e, 0),
+        positions: await loadPositions(data.electionId),
+        counts: {} as Record<string, number>,
+        ballotsCast: 0,
+        totalVotes: 0,
+        totalEligible: e.eligible_voters,
+        participationRate: 0,
+        locked: true,
+        tallied: false,
+        published,
+      };
+    }
 
     const positions = await loadPositions(data.electionId);
-    const { data: votes } = await supabaseAdmin
-      .from("votes")
-      .select("candidate_id")
-      .eq("election_id", data.electionId);
-    const counts: Record<string, number> = {};
-    for (const v of votes ?? []) counts[v.candidate_id] = (counts[v.candidate_id] ?? 0) + 1;
-
-    const { count: ballots } = await supabaseAdmin
-      .from("ballot_receipts")
-      .select("id", { count: "exact", head: true })
-      .eq("election_id", data.electionId);
+    const tally = (e.tally as unknown as StoredTally | null) ?? null;
+    const counts = tally?.perCandidate ?? {};
+    const ballotsCast = tally?.decrypted ?? 0;
+    const totalVotes = Object.values(counts).reduce((a, b) => a + b, 0);
+    const participationRate = e.eligible_voters
+      ? Math.round((ballotsCast / e.eligible_voters) * 100)
+      : 0;
 
     return {
-      election: normalizeElection(e, ballots ?? 0),
+      election: normalizeElection(e, ballotsCast),
       positions,
       counts,
-      ballotsCast: ballots ?? 0,
-      totalVotes: votes?.length ?? 0,
+      ballotsCast,
+      totalVotes,
+      totalEligible: e.eligible_voters,
+      participationRate,
+      locked: false,
+      tallied: !!tally,
+      published,
     };
   });
 
@@ -194,7 +237,7 @@ export const getAuditLog = createServerFn({ method: "GET" })
   .handler(async () => {
     const { data } = await supabaseAdmin
       .from("audit_log")
-      .select("seq, ts, actor, action, election_id, prev_hash, hash")
+      .select("seq, ts, actor, action, details, election_id, prev_hash, hash")
       .order("seq", { ascending: true });
     return {
       entries: (data ?? []).map((r) => ({
@@ -202,6 +245,7 @@ export const getAuditLog = createServerFn({ method: "GET" })
         ts: r.ts,
         actor: r.actor,
         action: r.action,
+        details: r.details ?? "",
         electionId: r.election_id,
         prevHash: r.prev_hash,
         hash: r.hash,
