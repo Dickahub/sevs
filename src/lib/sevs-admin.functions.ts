@@ -1,40 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { sha256Hex, generateElectionKeys } from "@/lib/sevs-crypto";
+import { appendAudit } from "@/lib/sevs-audit.server";
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-const GENESIS = "0".repeat(64);
-
-function sha256(input: string) {
-  return createHash("sha256").update(input).digest("hex");
-}
-
-// Append a tamper-evident entry to the SHA-256 hash-chained audit log.
-async function appendAudit(actor: string, action: string, electionId: string | null) {
-  const { data: last } = await supabaseAdmin
-    .from("audit_log")
-    .select("hash")
-    .order("seq", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const prevHash = last?.hash ?? GENESIS;
-  const ts = new Date().toISOString();
-  const hash = sha256(`${prevHash}|${ts}|${actor}|${action}|${electionId ?? ""}`);
-  await supabaseAdmin.from("audit_log").insert({
-    ts,
-    actor,
-    action,
-    election_id: electionId,
-    prev_hash: prevHash,
-    hash,
-  });
-}
 
 async function requireAdmin(userId: string) {
   const { data } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", userId);
@@ -47,66 +21,6 @@ function actorTag(userId: string) {
   return `admin:#${userId.slice(0, 8)}`;
 }
 
-// --- WebCrypto helpers (Worker-safe) ----------------------------------------
-
-function bufToB64(buf: ArrayBuffer) {
-  const bytes = new Uint8Array(buf);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin);
-}
-
-function toPem(label: string, buf: ArrayBuffer) {
-  const b64 = bufToB64(buf).replace(/(.{64})/g, "$1\n");
-  return `-----BEGIN ${label}-----\n${b64}\n-----END ${label}-----\n`;
-}
-
-// Generate an RSA-2048 key pair. Returns the public key as PEM and the private
-// key encrypted with the given passphrase (PBKDF2 + AES-GCM), serialised as a
-// self-describing JSON envelope so it can be decrypted later.
-async function generateElectionKeys(passphrase: string) {
-  const kp = await crypto.subtle.generateKey(
-    {
-      name: "RSA-OAEP",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["encrypt", "decrypt"],
-  );
-
-  const spki = await crypto.subtle.exportKey("spki", kp.publicKey);
-  const pkcs8 = await crypto.subtle.exportKey("pkcs8", kp.privateKey);
-  const publicKeyPem = toPem("PUBLIC KEY", spki);
-
-  const enc = new TextEncoder();
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const baseKey = await crypto.subtle.importKey("raw", enc.encode(passphrase), "PBKDF2", false, [
-    "deriveKey",
-  ]);
-  const aesKey = await crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: 150000, hash: "SHA-256" },
-    baseKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt"],
-  );
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, pkcs8);
-
-  const envelope = JSON.stringify({
-    v: 1,
-    alg: "RSA-2048",
-    kdf: "PBKDF2-SHA256",
-    iterations: 150000,
-    salt: bufToB64(salt.buffer),
-    iv: bufToB64(iv.buffer),
-    ciphertext: bufToB64(ct),
-  });
-
-  return { publicKeyPem, encryptedPrivateKey: envelope };
-}
 
 // ============================================================================
 // Voter accounts
