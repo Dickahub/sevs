@@ -30,7 +30,8 @@ function CastConfirmation() {
 
   const receiptHash = data?.receipt?.ballot_hash ?? "";
   const castAt = data?.receipt?.cast_at;
-  const receiptId = receiptHash ? "SEVS-2026-R-" + receiptHash.slice(0, 8).toUpperCase() : "";
+  const receiptToken = data?.receipt?.receipt_token ?? "";
+  const receiptId = receiptToken || (receiptHash ? "SEVS-2026-R-" + receiptHash.slice(0, 8).toUpperCase() : "");
 
   return (
     <AppShell>
