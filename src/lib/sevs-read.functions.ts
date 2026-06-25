@@ -195,7 +195,7 @@ export const getElectionResults = createServerFn({ method: "GET" })
       .eq("id", data.electionId)
       .maybeSingle();
     if (!e) {
-      return { election: null, sealed: false, positions: [], counts: {}, ballotsCast: 0, totalVotes: 0, eligibleVoters: 0, participationPct: 0, resultsPublished: false, talliedAt: null };
+      return { election: null, sealed: false, positions: [], counts: {} as Record<string, number>, ballotsCast: 0, totalVotes: 0, eligibleVoters: 0, participationPct: 0, resultsPublished: false, talliedAt: null };
     }
 
     const status = effectiveStatus(e.opens_at, e.closes_at);
@@ -208,7 +208,7 @@ export const getElectionResults = createServerFn({ method: "GET" })
         election: normalizeElection(e, 0),
         sealed: true as const,
         positions,
-        counts: {},
+        counts: {} as Record<string, number>,
         ballotsCast: 0,
         totalVotes: 0,
         eligibleVoters: e.eligible_voters,
