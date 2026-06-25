@@ -147,8 +147,11 @@ function Audit() {
                     <span className="rounded-md bg-primary/8 px-2 py-0.5 font-mono text-xs text-primary">
                       {row.action}
                     </span>
+                    {row.details && (
+                      <div className="mt-1 text-xs text-muted-foreground">{row.details}</div>
+                    )}
                     {row.electionId && (
-                      <div className="mt-1 text-xs text-muted-foreground">{row.electionId}</div>
+                      <div className="mt-1 font-mono text-[11px] text-muted-foreground/70">{row.electionId}</div>
                     )}
                   </td>
                   <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">
