@@ -240,6 +240,7 @@ export type Database = {
           public_key: string | null
           results_published: boolean
           status: string
+          suspended: boolean
           tallied_at: string | null
           tally: Json | null
           title: string
@@ -255,6 +256,7 @@ export type Database = {
           public_key?: string | null
           results_published?: boolean
           status?: string
+          suspended?: boolean
           tallied_at?: string | null
           tally?: Json | null
           title: string
@@ -270,6 +272,7 @@ export type Database = {
           public_key?: string | null
           results_published?: boolean
           status?: string
+          suspended?: boolean
           tallied_at?: string | null
           tally?: Json | null
           title?: string
