@@ -20,6 +20,7 @@ import { Route as SetupTokenRouteImport } from './routes/setup.$token'
 import { Route as ResultsElectionIdRouteImport } from './routes/results.$electionId'
 import { Route as VoteElectionIdCastRouteImport } from './routes/vote.$electionId.cast'
 import { Route as ApiPublicSeedSevsRouteImport } from './routes/api/public/seed-sevs'
+import { Route as ApiPublicResultsStreamElectionIdRouteImport } from './routes/api/public/results-stream.$electionId'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -76,6 +77,12 @@ const ApiPublicSeedSevsRoute = ApiPublicSeedSevsRouteImport.update({
   path: '/api/public/seed-sevs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicResultsStreamElectionIdRoute =
+  ApiPublicResultsStreamElectionIdRouteImport.update({
+    id: '/api/public/results-stream/$electionId',
+    path: '/api/public/results-stream/$electionId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/results/': typeof ResultsIndexRoute
   '/api/public/seed-sevs': typeof ApiPublicSeedSevsRoute
   '/vote/$electionId/cast': typeof VoteElectionIdCastRoute
+  '/api/public/results-stream/$electionId': typeof ApiPublicResultsStreamElectionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -102,6 +110,7 @@ export interface FileRoutesByTo {
   '/results': typeof ResultsIndexRoute
   '/api/public/seed-sevs': typeof ApiPublicSeedSevsRoute
   '/vote/$electionId/cast': typeof VoteElectionIdCastRoute
+  '/api/public/results-stream/$electionId': typeof ApiPublicResultsStreamElectionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -116,6 +125,7 @@ export interface FileRoutesById {
   '/results/': typeof ResultsIndexRoute
   '/api/public/seed-sevs': typeof ApiPublicSeedSevsRoute
   '/vote/$electionId/cast': typeof VoteElectionIdCastRoute
+  '/api/public/results-stream/$electionId': typeof ApiPublicResultsStreamElectionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -131,6 +141,7 @@ export interface FileRouteTypes {
     | '/results/'
     | '/api/public/seed-sevs'
     | '/vote/$electionId/cast'
+    | '/api/public/results-stream/$electionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/results'
     | '/api/public/seed-sevs'
     | '/vote/$electionId/cast'
+    | '/api/public/results-stream/$electionId'
   id:
     | '__root__'
     | '/'
@@ -157,6 +169,7 @@ export interface FileRouteTypes {
     | '/results/'
     | '/api/public/seed-sevs'
     | '/vote/$electionId/cast'
+    | '/api/public/results-stream/$electionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -170,6 +183,7 @@ export interface RootRouteChildren {
   VoteElectionIdRoute: typeof VoteElectionIdRouteWithChildren
   ResultsIndexRoute: typeof ResultsIndexRoute
   ApiPublicSeedSevsRoute: typeof ApiPublicSeedSevsRoute
+  ApiPublicResultsStreamElectionIdRoute: typeof ApiPublicResultsStreamElectionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -251,6 +265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicSeedSevsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/results-stream/$electionId': {
+      id: '/api/public/results-stream/$electionId'
+      path: '/api/public/results-stream/$electionId'
+      fullPath: '/api/public/results-stream/$electionId'
+      preLoaderRoute: typeof ApiPublicResultsStreamElectionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -277,6 +298,7 @@ const rootRouteChildren: RootRouteChildren = {
   VoteElectionIdRoute: VoteElectionIdRouteWithChildren,
   ResultsIndexRoute: ResultsIndexRoute,
   ApiPublicSeedSevsRoute: ApiPublicSeedSevsRoute,
+  ApiPublicResultsStreamElectionIdRoute: ApiPublicResultsStreamElectionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
