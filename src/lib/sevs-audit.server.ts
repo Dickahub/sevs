@@ -36,7 +36,7 @@ export async function appendAudit(
     election_id: electionId,
     prev_hash: prevHash,
     hash,
-    details: details || null,
+    details: details || undefined,
   });
 }
 
