@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { AppShell } from "@/components/sevs/AppShell";
-import { getAuditLog } from "@/lib/sevs-read.functions";
+import { getAuditLog, getMe } from "@/lib/sevs-read.functions";
+import { verifyAuditChain, exportAuditPdf } from "@/lib/sevs-results.functions";
 import { formatDateTime } from "@/lib/sevs-types";
 import { requireAuth } from "@/lib/sevs-guard";
-import { ShieldCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ShieldCheck, ShieldAlert, Download } from "lucide-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/audit")({
   ssr: false,
@@ -19,13 +23,56 @@ export const Route = createFileRoute("/audit")({
   component: Audit,
 });
 
+function downloadBase64(filename: string, mime: string, base64: string) {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function Audit() {
   const fetchAudit = useServerFn(getAuditLog);
+  const fetchMe = useServerFn(getMe);
+  const verifyFn = useServerFn(verifyAuditChain);
+  const exportFn = useServerFn(exportAuditPdf);
   const { data, isLoading } = useQuery({
     queryKey: ["audit"],
     queryFn: () => fetchAudit(),
   });
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => fetchMe() });
   const entries = data?.entries ?? [];
+
+  const [verified, setVerified] = useState<{ valid: boolean; brokenAtSeq: number | null } | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleVerify() {
+    setVerifying(true);
+    try {
+      const res = await verifyFn();
+      setVerified(res);
+      if (res.valid) toast.success(`Chain valid — ${res.total} entries verified`);
+      else toast.error(`Chain BROKEN at entry #${res.brokenAtSeq}`);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const res = await exportFn({ data: {} });
+      if (res.ok) {
+        downloadBase64(res.filename, res.mime, res.base64);
+        toast.success("Signed audit report exported");
+      }
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <AppShell>
@@ -36,10 +83,39 @@ function Audit() {
             Every event is hash-chained with SHA-256. Any tampering breaks the chain.
           </p>
         </div>
-        <div className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-medium text-success">
-          <ShieldCheck className="h-3.5 w-3.5" /> Chain verified — {entries.length} entries
+        <div className="flex flex-wrap items-center gap-2">
+          {me?.isAdmin && (
+            <>
+              <Button variant="outline" size="sm" onClick={handleVerify} disabled={verifying}>
+                <ShieldCheck className="mr-1.5 h-4 w-4" /> {verifying ? "Verifying…" : "Verify chain"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting}>
+                <Download className="mr-1.5 h-4 w-4" /> {exporting ? "Exporting…" : "Signed PDF"}
+              </Button>
+            </>
+          )}
+          <div
+            className={
+              "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium " +
+              (verified && !verified.valid
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : "border-success/30 bg-success/10 text-success")
+            }
+          >
+            {verified && !verified.valid ? (
+              <>
+                <ShieldAlert className="h-3.5 w-3.5" /> Chain broken at #{verified.brokenAtSeq}
+              </>
+            ) : (
+              <>
+                <ShieldCheck className="h-3.5 w-3.5" />{" "}
+                {verified ? "Chain verified" : "Hash-chained"} — {entries.length} entries
+              </>
+            )}
+          </div>
         </div>
       </div>
+
 
       <div className="mt-8 overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-card)]">
         <div className="max-h-[70vh] overflow-auto">
