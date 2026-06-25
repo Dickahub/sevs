@@ -76,7 +76,11 @@ export const closeAndTally = createServerFn({ method: "POST" })
     let decrypted = 0;
     for (const b of ballots ?? []) {
       try {
-        const plaintext = await decryptBallot(privateKey, b);
+        const plaintext = await decryptBallot(privateKey, {
+          ciphertext: b.ciphertext,
+          iv: b.iv,
+          encryptedKey: b.encrypted_key,
+        });
         const parsed = JSON.parse(plaintext) as {
           selections: Array<{ positionId: string; candidateIds: string[] }>;
         };
