@@ -81,7 +81,7 @@ async function createOneVoter(input: VoterInput, actor: string): Promise<CreateV
   const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
   await supabaseAdmin.from("voter_setup_tokens").insert({
     voter_id: created.user.id,
-    token_hash: sha256(token),
+    token_hash: sha256Hex(token),
     expires_at: expiresAt,
   });
 
@@ -123,7 +123,7 @@ export const resendSetupLink = createServerFn({ method: "POST" })
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
     const { error } = await supabaseAdmin.from("voter_setup_tokens").insert({
       voter_id: data.voterId,
-      token_hash: sha256(token),
+      token_hash: sha256Hex(token),
       expires_at: expiresAt,
     });
     if (error) return { ok: false as const, error: "Could not create a new setup link." };
