@@ -12,6 +12,13 @@ export const GENESIS = "0".repeat(64);
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
+// WebCrypto's lib types want `BufferSource` backed by a plain `ArrayBuffer`.
+// Under strict TS, typed arrays widen to `ArrayBufferLike`, so cast at the call
+// boundary to keep the crypto helpers readable.
+function bs(v: ArrayBuffer | ArrayBufferView): BufferSource {
+  return v as BufferSource;
+}
+
 export function sha256Hex(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
@@ -72,8 +79,12 @@ function bufToB64(buf: ArrayBuffer): string {
   return Buffer.from(new Uint8Array(buf)).toString("base64");
 }
 
+// Returns a value backed by a fresh standalone ArrayBuffer (not a pooled one).
 function b64ToBytes(b64: string): Uint8Array {
-  return new Uint8Array(Buffer.from(b64, "base64"));
+  const b = Buffer.from(b64, "base64");
+  const out = new Uint8Array(b.byteLength);
+  out.set(b);
+  return out;
 }
 
 function toPem(label: string, buf: ArrayBuffer): string {
@@ -89,6 +100,10 @@ function pemToBytes(pem: string): Uint8Array {
   return b64ToBytes(body);
 }
 
+function randBytes(n: number): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(n));
+}
+
 // --- private-key wrapping (PBKDF2 + AES-GCM) ---------------------------------
 
 interface KeyEnvelope {
@@ -101,11 +116,11 @@ interface KeyEnvelope {
 }
 
 async function deriveWrapKey(secret: string, salt: Uint8Array, usages: KeyUsage[]) {
-  const baseKey = await crypto.subtle.importKey("raw", enc.encode(secret), "PBKDF2", false, [
+  const baseKey = await crypto.subtle.importKey("raw", bs(enc.encode(secret)), "PBKDF2", false, [
     "deriveKey",
   ]);
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: 150000, hash: "SHA-256" },
+    { name: "PBKDF2", salt: bs(salt), iterations: 150000, hash: "SHA-256" },
     baseKey,
     { name: "AES-GCM", length: 256 },
     false,
@@ -114,16 +129,16 @@ async function deriveWrapKey(secret: string, salt: Uint8Array, usages: KeyUsage[
 }
 
 async function wrapPkcs8(pkcs8: ArrayBuffer, secret: string): Promise<string> {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const salt = randBytes(16);
+  const iv = randBytes(12);
   const aesKey = await deriveWrapKey(secret, salt, ["encrypt"]);
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, pkcs8);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: bs(iv) }, aesKey, pkcs8);
   const envelope: KeyEnvelope = {
     v: 1,
     kdf: "PBKDF2-SHA256",
     iterations: 150000,
-    salt: bufToB64(salt.buffer),
-    iv: bufToB64(iv.buffer),
+    salt: bufToB64(salt.buffer as ArrayBuffer),
+    iv: bufToB64(iv.buffer as ArrayBuffer),
     ciphertext: bufToB64(ct),
   };
   return JSON.stringify(envelope);
@@ -134,7 +149,11 @@ async function unwrapPkcs8(envelopeJson: string, secret: string): Promise<ArrayB
   const salt = b64ToBytes(envelope.salt);
   const iv = b64ToBytes(envelope.iv);
   const aesKey = await deriveWrapKey(secret, salt, ["decrypt"]);
-  return crypto.subtle.decrypt({ name: "AES-GCM", iv }, aesKey, b64ToBytes(envelope.ciphertext));
+  return crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: bs(iv) },
+    aesKey,
+    bs(b64ToBytes(envelope.ciphertext)),
+  );
 }
 
 // --- election encryption keys (RSA-OAEP) -------------------------------------
@@ -158,7 +177,7 @@ export async function generateElectionKeys(passphrase: string) {
 async function importEncryptPublicKey(pem: string): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     "spki",
-    pemToBytes(pem),
+    bs(pemToBytes(pem)),
     { name: "RSA-OAEP", hash: "SHA-256" },
     false,
     ["encrypt"],
@@ -193,12 +212,12 @@ export async function encryptBallot(publicKeyPem: string, plaintext: string): Pr
   const aesKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, [
     "encrypt",
   ]);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, aesKey, enc.encode(plaintext));
+  const iv = randBytes(12);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv: bs(iv) }, aesKey, bs(enc.encode(plaintext)));
   const rawAes = await crypto.subtle.exportKey("raw", aesKey);
   const pub = await importEncryptPublicKey(publicKeyPem);
   const encKey = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, pub, rawAes);
-  return { ciphertext: bufToB64(ct), iv: bufToB64(iv.buffer), encryptedKey: bufToB64(encKey) };
+  return { ciphertext: bufToB64(ct), iv: bufToB64(iv.buffer as ArrayBuffer), encryptedKey: bufToB64(encKey) };
 }
 
 export async function decryptBallot(
@@ -208,15 +227,15 @@ export async function decryptBallot(
   const rawAes = await crypto.subtle.decrypt(
     { name: "RSA-OAEP" },
     privateKey,
-    b64ToBytes(ballot.encryptedKey),
+    bs(b64ToBytes(ballot.encryptedKey)),
   );
   const aesKey = await crypto.subtle.importKey("raw", rawAes, { name: "AES-GCM" }, false, [
     "decrypt",
   ]);
   const pt = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: b64ToBytes(ballot.iv) },
+    { name: "AES-GCM", iv: bs(b64ToBytes(ballot.iv)) },
     aesKey,
-    b64ToBytes(ballot.ciphertext),
+    bs(b64ToBytes(ballot.ciphertext)),
   );
   return dec.decode(pt);
 }
@@ -262,7 +281,7 @@ export async function importSigningPrivateKey(
 async function importSigningPublicKey(pem: string): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     "spki",
-    pemToBytes(pem),
+    bs(pemToBytes(pem)),
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
     ["verify"],
@@ -270,7 +289,11 @@ async function importSigningPublicKey(pem: string): Promise<CryptoKey> {
 }
 
 export async function signMessage(privateKey: CryptoKey, message: string): Promise<string> {
-  const sig = await crypto.subtle.sign({ name: "RSASSA-PKCS1-v1_5" }, privateKey, enc.encode(message));
+  const sig = await crypto.subtle.sign(
+    { name: "RSASSA-PKCS1-v1_5" },
+    privateKey,
+    bs(enc.encode(message)),
+  );
   return bufToB64(sig);
 }
 
@@ -284,8 +307,8 @@ export async function verifyMessage(
     return await crypto.subtle.verify(
       { name: "RSASSA-PKCS1-v1_5" },
       pub,
-      b64ToBytes(signatureB64),
-      enc.encode(message),
+      bs(b64ToBytes(signatureB64)),
+      bs(enc.encode(message)),
     );
   } catch {
     return false;
