@@ -307,7 +307,7 @@ function BallotPage() {
               })}
             </div>
 
-            <Button className="mt-5 w-full" onClick={() => setConfirming(true)} disabled={completed === 0}>
+            <Button className="mt-5 w-full" onClick={() => setConfirming(true)} disabled={completed === 0 || expired}>
               Review &amp; submit
             </Button>
             {error && <p className="mt-3 text-xs text-destructive">{error}</p>}
