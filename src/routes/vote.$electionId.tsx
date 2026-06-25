@@ -250,7 +250,7 @@ function BallotPage() {
                   expired
                     ? "border-destructive/40 bg-destructive/10 text-destructive"
                     : remainingMs < 3 * 60 * 1000
-                      ? "border-warning/40 bg-warning/10 text-warning"
+                      ? "border-primary/40 bg-primary/10 text-primary"
                       : "border-border bg-muted/40 text-muted-foreground",
                 )}
               >
