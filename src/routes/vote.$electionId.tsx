@@ -243,6 +243,36 @@ function BallotPage() {
 
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+            {remainingMs !== null && (
+              <div
+                className={cn(
+                  "mb-4 flex items-center justify-between rounded-md border px-3 py-2 text-xs",
+                  expired
+                    ? "border-destructive/40 bg-destructive/10 text-destructive"
+                    : remainingMs < 3 * 60 * 1000
+                      ? "border-warning/40 bg-warning/10 text-warning"
+                      : "border-border bg-muted/40 text-muted-foreground",
+                )}
+              >
+                <span>{expired ? "Session expired" : "Ballot session"}</span>
+                <span className="font-mono font-semibold">
+                  {expired
+                    ? "00:00"
+                    : `${String(Math.floor(remainingMs / 60000)).padStart(2, "0")}:${String(
+                        Math.floor((remainingMs % 60000) / 1000),
+                      ).padStart(2, "0")}`}
+                </span>
+              </div>
+            )}
+            {expired && (
+              <p className="mb-3 text-xs text-destructive">
+                Your 20-minute ballot session has expired. Please{" "}
+                <Link to="/login" className="underline">
+                  sign in again
+                </Link>{" "}
+                to vote.
+              </p>
+            )}
             <h3 className="text-sm font-semibold">Ballot summary</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               {completed} of {totalPositions} positions answered
