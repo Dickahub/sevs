@@ -38,6 +38,24 @@ function BallotPage() {
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
+
+  // 20-minute ballot session countdown. When it hits zero the voter must
+  // re-authenticate (the server also rejects an expired session token).
+  const expiresAt = data?.sessionExpiresAt ?? null;
+  useEffect(() => {
+    if (!expiresAt) {
+      setRemainingMs(null);
+      return;
+    }
+    const end = new Date(expiresAt).getTime();
+    const tick = () => setRemainingMs(Math.max(0, end - Date.now()));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  const expired = remainingMs !== null && remainingMs <= 0;
 
   function toggle(positionId: string, candidateId: string, seats: number) {
     setSel((prev) => {
@@ -55,16 +73,26 @@ function BallotPage() {
 
   async function handleSubmit() {
     if (!data?.election) return;
+    if (!data.sessionToken || expired) {
+      setError("Your ballot session has expired. Please sign in again.");
+      setConfirming(false);
+      return;
+    }
     setSubmitting(true);
     setError("");
     const selections = (data.positions ?? [])
       .map((p) => ({ positionId: p.id, candidateIds: Array.from(sel[p.id] ?? []) }))
       .filter((s) => s.candidateIds.length > 0);
-    const res = await submitBallot({ data: { electionId, selections } });
+    const res = await submitBallot({
+      data: { electionId, selections, sessionToken: data.sessionToken },
+    });
     setSubmitting(false);
     if (!res.success) {
       setError(res.error);
       setConfirming(false);
+      if (res.expired) {
+        setTimeout(() => navigate({ to: "/login" }), 1500);
+      }
       return;
     }
     navigate({ to: "/vote/$electionId/cast", params: { electionId } });
