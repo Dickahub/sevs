@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppShell } from "@/components/sevs/AppShell";
 import { getElectionDetail } from "@/lib/sevs-read.functions";
 import { castBallot } from "@/lib/sevs.functions";
@@ -38,6 +38,24 @@ function BallotPage() {
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
+
+  // 20-minute ballot session countdown. When it hits zero the voter must
+  // re-authenticate (the server also rejects an expired session token).
+  const expiresAt = data?.sessionExpiresAt ?? null;
+  useEffect(() => {
+    if (!expiresAt) {
+      setRemainingMs(null);
+      return;
+    }
+    const end = new Date(expiresAt).getTime();
+    const tick = () => setRemainingMs(Math.max(0, end - Date.now()));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  const expired = remainingMs !== null && remainingMs <= 0;
 
   function toggle(positionId: string, candidateId: string, seats: number) {
     setSel((prev) => {
@@ -55,16 +73,26 @@ function BallotPage() {
 
   async function handleSubmit() {
     if (!data?.election) return;
+    if (!data.sessionToken || expired) {
+      setError("Your ballot session has expired. Please sign in again.");
+      setConfirming(false);
+      return;
+    }
     setSubmitting(true);
     setError("");
     const selections = (data.positions ?? [])
       .map((p) => ({ positionId: p.id, candidateIds: Array.from(sel[p.id] ?? []) }))
       .filter((s) => s.candidateIds.length > 0);
-    const res = await submitBallot({ data: { electionId, selections } });
+    const res = await submitBallot({
+      data: { electionId, selections, sessionToken: data.sessionToken },
+    });
     setSubmitting(false);
     if (!res.success) {
       setError(res.error);
       setConfirming(false);
+      if (res.expired) {
+        setTimeout(() => navigate({ to: "/login" }), 1500);
+      }
       return;
     }
     navigate({ to: "/vote/$electionId/cast", params: { electionId } });
@@ -215,6 +243,36 @@ function BallotPage() {
 
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-card)]">
+            {remainingMs !== null && (
+              <div
+                className={cn(
+                  "mb-4 flex items-center justify-between rounded-md border px-3 py-2 text-xs",
+                  expired
+                    ? "border-destructive/40 bg-destructive/10 text-destructive"
+                    : remainingMs < 3 * 60 * 1000
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border bg-muted/40 text-muted-foreground",
+                )}
+              >
+                <span>{expired ? "Session expired" : "Ballot session"}</span>
+                <span className="font-mono font-semibold">
+                  {expired
+                    ? "00:00"
+                    : `${String(Math.floor(remainingMs / 60000)).padStart(2, "0")}:${String(
+                        Math.floor((remainingMs % 60000) / 1000),
+                      ).padStart(2, "0")}`}
+                </span>
+              </div>
+            )}
+            {expired && (
+              <p className="mb-3 text-xs text-destructive">
+                Your 20-minute ballot session has expired. Please{" "}
+                <Link to="/login" className="underline">
+                  sign in again
+                </Link>{" "}
+                to vote.
+              </p>
+            )}
             <h3 className="text-sm font-semibold">Ballot summary</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               {completed} of {totalPositions} positions answered
@@ -249,7 +307,7 @@ function BallotPage() {
               })}
             </div>
 
-            <Button className="mt-5 w-full" onClick={() => setConfirming(true)} disabled={completed === 0}>
+            <Button className="mt-5 w-full" onClick={() => setConfirming(true)} disabled={completed === 0 || expired}>
               Review &amp; submit
             </Button>
             {error && <p className="mt-3 text-xs text-destructive">{error}</p>}

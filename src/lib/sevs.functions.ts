@@ -1,40 +1,29 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { createHash } from "crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import {
+  sha256Hex,
+  randomToken,
+  verifyBallotSession,
+  encryptBallot,
+  signMessage,
+} from "@/lib/sevs-crypto";
+import { appendAudit, getSystemSigningKey } from "@/lib/sevs-audit.server";
 
-const GENESIS = "0".repeat(64);
+// A delivered ballot must be submitted within this window or the voter must
+// re-authenticate (REQ: 20-minute ballot session).
+const BALLOT_SESSION_MS = 20 * 60 * 1000;
 
-function sha256(input: string) {
-  return createHash("sha256").update(input).digest("hex");
-}
-
-// Append a tamper-evident entry to the SHA-256 hash-chained audit log.
-async function appendAudit(actor: string, action: string, electionId: string | null) {
-  const { data: last } = await supabaseAdmin
-    .from("audit_log")
-    .select("hash")
-    .order("seq", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const prevHash = last?.hash ?? GENESIS;
-  const ts = new Date().toISOString();
-  const hash = sha256(`${prevHash}|${ts}|${actor}|${action}|${electionId ?? ""}`);
-
-  await supabaseAdmin.from("audit_log").insert({
-    ts,
-    actor,
-    action,
-    election_id: electionId,
-    prev_hash: prevHash,
-    hash,
-  });
+function serverSecret(): string {
+  const s = process.env.SEVS_SERVER_SECRET;
+  if (!s) throw new Error("Server signing secret is not configured.");
+  return s;
 }
 
 const castSchema = z.object({
   electionId: z.string().uuid(),
+  sessionToken: z.string().min(10).max(400),
   selections: z
     .array(
       z.object({
@@ -51,8 +40,28 @@ export const castBallot = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => castSchema.parse(input))
   .handler(async ({ data, context }) => {
     const voterId = context.userId;
+    const secret = serverSecret();
 
-    // 0. Account must be active.
+    // 0. Ballot session must be valid and within the 20-minute window.
+    const session = verifyBallotSession(
+      data.sessionToken,
+      data.electionId,
+      voterId,
+      secret,
+      BALLOT_SESSION_MS,
+    );
+    if (!session.ok) {
+      return {
+        success: false as const,
+        expired: session.reason === "expired",
+        error:
+          session.reason === "expired"
+            ? "Your ballot session expired (20-minute limit). Please sign in again."
+            : "Invalid ballot session. Please reopen the ballot.",
+      };
+    }
+
+    // 1. Account must be active.
     const { data: prof } = await supabaseAdmin
       .from("profiles")
       .select("is_active")
@@ -62,14 +71,16 @@ export const castBallot = createServerFn({ method: "POST" })
       return { success: false as const, error: "Your account is inactive. Contact an administrator." };
     }
 
-    // 1. Election must exist and be within its voting window (status is derived
-    //    from the configured times, so it opens/closes automatically).
+    // 2. Election must exist, not be suspended, and be inside its voting window.
     const { data: election, error: elErr } = await supabaseAdmin
       .from("elections")
-      .select("id, status, opens_at, closes_at")
+      .select("id, opens_at, closes_at, suspended, public_key")
       .eq("id", data.electionId)
       .single();
     if (elErr || !election) return { success: false as const, error: "Election not found." };
+    if (election.suspended) {
+      return { success: false as const, error: "Voting for this election has been suspended." };
+    }
     const nowMs = Date.now();
     if (nowMs < new Date(election.opens_at).getTime()) {
       return { success: false as const, error: "This election has not opened yet." };
@@ -77,115 +88,88 @@ export const castBallot = createServerFn({ method: "POST" })
     if (nowMs > new Date(election.closes_at).getTime()) {
       return { success: false as const, error: "Voting is closed for this election." };
     }
+    if (!election.public_key) {
+      return { success: false as const, error: "This election is not configured for encrypted voting." };
+    }
 
-    // 1b. Voter must be on the election's eligibility list.
+    // 3. Voter must be eligible (the only voter↔ballot link is has_voted).
     const { data: elig } = await supabaseAdmin
       .from("election_eligibility")
-      .select("id")
+      .select("id, has_voted")
       .eq("election_id", data.electionId)
       .eq("voter_id", voterId)
       .maybeSingle();
     if (!elig) {
       return { success: false as const, error: "You are not eligible to vote in this election." };
     }
+    if (elig.has_voted) {
+      return { success: false as const, error: "You have already voted in this election." };
+    }
 
-    // 2. One voter, one ballot.
-    const { data: existing } = await supabaseAdmin
-      .from("ballot_receipts")
-      .select("id")
-      .eq("election_id", data.electionId)
-      .eq("voter_id", voterId)
-      .maybeSingle();
-    if (existing) return { success: false as const, error: "You have already voted in this election." };
-
-    // 3. Validate positions & candidates and seat limits.
+    // 4. Validate positions, candidates, seat limits.
     const { data: positions } = await supabaseAdmin
       .from("positions")
       .select("id, seats, candidates(id)")
       .eq("election_id", data.electionId);
     const posMap = new Map((positions ?? []).map((p) => [p.id, p]));
 
-    const voteRows: { election_id: string; position_id: string; candidate_id: string }[] = [];
     for (const sel of data.selections) {
       const pos = posMap.get(sel.positionId);
       if (!pos) return { success: false as const, error: "Invalid position in ballot." };
       if (sel.candidateIds.length > pos.seats) {
         return { success: false as const, error: "Too many candidates selected for a position." };
       }
-      const validCandidates = new Set((pos.candidates as { id: string }[]).map((c) => c.id));
+      const valid = new Set((pos.candidates as { id: string }[]).map((c) => c.id));
       const unique = new Set(sel.candidateIds);
       if (unique.size !== sel.candidateIds.length) {
         return { success: false as const, error: "Duplicate candidate selection." };
       }
       for (const cid of sel.candidateIds) {
-        if (!validCandidates.has(cid)) return { success: false as const, error: "Invalid candidate in ballot." };
-        voteRows.push({ election_id: data.electionId, position_id: sel.positionId, candidate_id: cid });
+        if (!valid.has(cid)) return { success: false as const, error: "Invalid candidate in ballot." };
       }
     }
 
-    // 4. Compute a verifiable receipt hash (does NOT reveal choices on-chain).
-    const ballotHash = sha256(
-      `${voterId}|${data.electionId}|${JSON.stringify(data.selections)}|${Date.now()}`,
-    );
+    // 5. Hybrid-encrypt the ballot content with the election RSA public key.
+    const plaintext = JSON.stringify({ selections: data.selections, castAt: new Date().toISOString() });
+    const encrypted = await encryptBallot(election.public_key, plaintext);
 
-    // 5. Record the receipt FIRST (unique constraint is the real guard against
-    //    double voting under concurrency).
-    const { error: rcptErr } = await supabaseAdmin.from("ballot_receipts").insert({
-      election_id: data.electionId,
-      voter_id: voterId,
-      ballot_hash: ballotHash,
+    // 6. Hash the ciphertext and sign it (RSA-SHA256) for integrity.
+    const ballotHash = sha256Hex(encrypted.ciphertext);
+    const { privateKey } = await getSystemSigningKey(secret);
+    const signature = await signMessage(privateKey, ballotHash);
+
+    // 7. Opaque receipt token — verifies recording without revealing content.
+    const receiptToken = randomToken(24);
+
+    // 8. Atomic: insert encrypted ballot, flip has_voted, write the receipt.
+    const { error: txErr } = await supabaseAdmin.rpc("cast_ballot_tx", {
+      p_election_id: data.electionId,
+      p_voter_id: voterId,
+      p_ciphertext: encrypted.ciphertext,
+      p_iv: encrypted.iv,
+      p_encrypted_key: encrypted.encryptedKey,
+      p_signature: signature,
+      p_ballot_hash: ballotHash,
+      p_receipt_hash: ballotHash,
+      p_receipt_token: receiptToken,
     });
-    if (rcptErr) {
-      return { success: false as const, error: "You have already voted in this election." };
-    }
-
-    // 6. Store the anonymous votes (no voter link → ballot secrecy).
-    if (voteRows.length > 0) {
-      const { error: voteErr } = await supabaseAdmin.from("votes").insert(voteRows);
-      if (voteErr) {
-        // Roll back the receipt so the voter can retry.
-        await supabaseAdmin
-          .from("ballot_receipts")
-          .delete()
-          .eq("election_id", data.electionId)
-          .eq("voter_id", voterId);
-        return { success: false as const, error: "Failed to record ballot. Please try again." };
+    if (txErr) {
+      if (txErr.message?.includes("not_eligible_or_already_voted")) {
+        return { success: false as const, error: "You have already voted in this election." };
       }
+      return { success: false as const, error: "Failed to record ballot. Please try again." };
     }
 
-    await appendAudit("voter:#anon", "BALLOT_CAST", data.electionId);
+    // 9. Audit — hash reference only, never ballot content.
+    await appendAudit("voter:#anon", "BALLOT_SUBMITTED", data.electionId, `ballot_hash=${ballotHash.slice(0, 16)}…`);
 
-    return { success: true as const, ballotHash, castAt: new Date().toISOString() };
+    return { success: true as const, receiptToken, ballotHash, castAt: new Date().toISOString() };
   });
 
-const electionIdSchema = z.object({ electionId: z.string().uuid() });
-
-// Tallied results computed from the anonymous votes table (server-only access).
-export const getResults = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => electionIdSchema.parse(input))
-  .handler(async ({ data }) => {
-    const { data: votes } = await supabaseAdmin
-      .from("votes")
-      .select("candidate_id")
-      .eq("election_id", data.electionId);
-
-    const counts: Record<string, number> = {};
-    for (const v of votes ?? []) {
-      counts[v.candidate_id] = (counts[v.candidate_id] ?? 0) + 1;
-    }
-    const { count: ballots } = await supabaseAdmin
-      .from("ballot_receipts")
-      .select("id", { count: "exact", head: true })
-      .eq("election_id", data.electionId);
-
-    return { counts, ballotsCast: ballots ?? 0 };
-  });
-
-// Live turnout (ballots cast) for any election — safe aggregate, no identities.
+// Live turnout (total ballots cast) — a safe aggregate, never a per-candidate count.
 export const getTurnout = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => electionIdSchema.parse(input))
+  .inputValidator((input: unknown) => z.object({ electionId: z.string().uuid() }).parse(input))
   .handler(async ({ data }) => {
     const { count } = await supabaseAdmin
       .from("ballot_receipts")
@@ -194,16 +178,24 @@ export const getTurnout = createServerFn({ method: "GET" })
     return { ballotsCast: count ?? 0 };
   });
 
-// Whether the current user has already voted in an election.
-export const getMyBallotStatus = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => electionIdSchema.parse(input))
-  .handler(async ({ data, context }) => {
-    const { data: receipt } = await supabaseAdmin
-      .from("ballot_receipts")
-      .select("ballot_hash, cast_at")
-      .eq("election_id", data.electionId)
-      .eq("voter_id", context.userId)
-      .maybeSingle();
-    return { hasVoted: !!receipt, receipt: receipt ?? null };
+// Record authentication events in the audit log (login success/failure, TOTP).
+export const logAuthEvent = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        type: z.enum(["login_success", "login_failure", "totp_verified", "account_locked"]),
+        email: z.string().trim().email().max(255).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    const actor = data.email ? `user:${data.email}` : "SYSTEM";
+    const actionMap: Record<string, string> = {
+      login_success: "LOGIN_SUCCESS",
+      login_failure: "LOGIN_FAILURE",
+      totp_verified: "TOTP_VERIFIED",
+      account_locked: "ACCOUNT_LOCKED",
+    };
+    await appendAudit(actor, actionMap[data.type], null, "");
+    return { ok: true as const };
   });
