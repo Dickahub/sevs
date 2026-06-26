@@ -87,6 +87,9 @@ export interface AdminElection {
   opensAt: string;
   closesAt: string;
   hasOpened: boolean;
+  suspended: boolean;
+  resultsPublished: boolean;
+  talliedAt: string | null;
   eligibleCount: number;
   candidateCount: number;
   positions: AdminPosition[];
