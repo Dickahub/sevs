@@ -2,7 +2,20 @@ import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, X, KeyRound, Copy, ShieldCheck } from "lucide-react";
+import {
+  Plus,
+  X,
+  KeyRound,
+  Copy,
+  ShieldCheck,
+  Pause,
+  Play,
+  Calculator,
+  Eye,
+  EyeOff,
+  FileDown,
+  FileText,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +31,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal } from "lucide-react";
+import {
   Table,
   TableBody,
   TableCell,
@@ -26,17 +47,41 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createElection, listAdminElections } from "@/lib/sevs-admin.functions";
-import { formatDateTime } from "@/lib/sevs-types";
+import {
+  closeAndTally,
+  setElectionSuspended,
+  setResultsPublished,
+  exportResultsCsv,
+  exportResultsPdf,
+} from "@/lib/sevs-results.functions";
+import { formatDateTime, type AdminElection } from "@/lib/sevs-types";
 
 interface PositionDraft {
   title: string;
   seats: number;
 }
 
+function downloadBase64(filename: string, mime: string, base64: string) {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function ElectionsPanel() {
   const qc = useQueryClient();
   const fetchElections = useServerFn(listAdminElections);
   const createFn = useServerFn(createElection);
+  const suspendFn = useServerFn(setElectionSuspended);
+  const tallyFn = useServerFn(closeAndTally);
+  const publishFn = useServerFn(setResultsPublished);
+  const csvFn = useServerFn(exportResultsCsv);
+  const pdfFn = useServerFn(exportResultsPdf);
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-elections"],
@@ -53,6 +98,12 @@ export function ElectionsPanel() {
   const [closesAt, setClosesAt] = useState("");
   const [positions, setPositions] = useState<PositionDraft[]>([{ title: "", seats: 1 }]);
   const [passphrase, setPassphrase] = useState<string | null>(null);
+
+  // Lifecycle action state
+  const [actingId, setActingId] = useState<string | null>(null);
+  const [tallyTarget, setTallyTarget] = useState<AdminElection | null>(null);
+  const [tallyPass, setTallyPass] = useState("");
+  const [tallyBusy, setTallyBusy] = useState(false);
 
   function reset() {
     setTitle("");
@@ -100,7 +151,63 @@ export function ElectionsPanel() {
     qc.invalidateQueries({ queryKey: ["admin-elections"] });
   }
 
-  const elections = data?.elections ?? [];
+  async function toggleSuspend(e: AdminElection) {
+    setActingId(e.id);
+    const res = await suspendFn({ data: { electionId: e.id, suspended: !e.suspended } });
+    setActingId(null);
+    if (!res.ok) {
+      toast.error(res.error ?? "Action failed");
+      return;
+    }
+    toast.success(e.suspended ? "Election resumed" : "Election suspended");
+    qc.invalidateQueries({ queryKey: ["admin-elections"] });
+  }
+
+  async function togglePublish(e: AdminElection) {
+    setActingId(e.id);
+    const res = await publishFn({ data: { electionId: e.id, published: !e.resultsPublished } });
+    setActingId(null);
+    if (!res.ok) {
+      toast.error(res.error ?? "Action failed");
+      return;
+    }
+    toast.success(e.resultsPublished ? "Results unpublished" : "Results published");
+    qc.invalidateQueries({ queryKey: ["admin-elections"] });
+  }
+
+  async function runTally(e: React.FormEvent) {
+    e.preventDefault();
+    if (!tallyTarget) return;
+    setTallyBusy(true);
+    const res = await tallyFn({ data: { electionId: tallyTarget.id, passphrase: tallyPass } });
+    setTallyBusy(false);
+    if (!res.ok) {
+      toast.error(res.error ?? "Tally failed");
+      return;
+    }
+    toast.success(`Tally complete — ${res.decrypted}/${res.totalBallots} ballots decrypted`);
+    setTallyTarget(null);
+    setTallyPass("");
+    qc.invalidateQueries({ queryKey: ["admin-elections"] });
+  }
+
+  async function exportCsv(e: AdminElection) {
+    setActingId(e.id);
+    const res = await csvFn({ data: { electionId: e.id } });
+    setActingId(null);
+    if (!res.ok) return toast.error(res.error ?? "Export failed");
+    downloadBase64(res.filename, res.mime, res.base64);
+  }
+
+  async function exportPdf(e: AdminElection) {
+    setActingId(e.id);
+    const res = await pdfFn({ data: { electionId: e.id } });
+    setActingId(null);
+    if (!res.ok) return toast.error(res.error ?? "Export failed");
+    downloadBase64(res.filename, res.mime, res.base64);
+  }
+
+  const elections = (data?.elections ?? []) as AdminElection[];
 
   return (
     <div className="space-y-6">
@@ -211,19 +318,20 @@ export function ElectionsPanel() {
               <TableHead>Positions</TableHead>
               <TableHead>Eligible</TableHead>
               <TableHead>Candidates</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
                   Loading…
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && elections.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
                   No elections yet.
                 </TableCell>
               </TableRow>
@@ -235,7 +343,19 @@ export function ElectionsPanel() {
                   <div className="text-xs text-muted-foreground">{e.organisation}</div>
                 </TableCell>
                 <TableCell>
-                  <StatusBadge status={e.status} />
+                  <div className="flex flex-col items-start gap-1">
+                    <StatusBadge status={e.status} />
+                    {e.suspended && (
+                      <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive">
+                        Suspended
+                      </span>
+                    )}
+                    {e.resultsPublished && (
+                      <span className="rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-success">
+                        Published
+                      </span>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   <div>{formatDateTime(e.opensAt)}</div>
@@ -244,12 +364,95 @@ export function ElectionsPanel() {
                 <TableCell className="text-sm">{e.positions.length}</TableCell>
                 <TableCell className="text-sm">{e.eligibleCount}</TableCell>
                 <TableCell className="text-sm">{e.candidateCount}</TableCell>
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" disabled={actingId === e.id}>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuItem onClick={() => toggleSuspend(e)}>
+                        {e.suspended ? (
+                          <>
+                            <Play className="mr-2 h-4 w-4" /> Resume election
+                          </>
+                        ) : (
+                          <>
+                            <Pause className="mr-2 h-4 w-4" /> Suspend election
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={e.status !== "closed"}
+                        onClick={() => {
+                          setTallyTarget(e);
+                          setTallyPass("");
+                        }}
+                      >
+                        <Calculator className="mr-2 h-4 w-4" /> Close &amp; tally
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => togglePublish(e)}>
+                        {e.resultsPublished ? (
+                          <>
+                            <EyeOff className="mr-2 h-4 w-4" /> Unpublish results
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="mr-2 h-4 w-4" /> Publish results
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => exportCsv(e)}>
+                        <FileDown className="mr-2 h-4 w-4" /> Export results (CSV)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => exportPdf(e)}>
+                        <FileText className="mr-2 h-4 w-4" /> Export results (PDF)
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
 
+      {/* Close & tally dialog */}
+      <Dialog open={!!tallyTarget} onOpenChange={(o) => !o && setTallyTarget(null)}>
+        <DialogContent>
+          <form onSubmit={runTally}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Calculator className="h-5 w-5 text-primary" /> Close &amp; tally
+              </DialogTitle>
+              <DialogDescription>
+                Enter the one-time passphrase shown when “{tallyTarget?.title}” was created. It
+                decrypts every ballot to compute the final tally and publishes the results.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5 py-2">
+              <Label htmlFor="pass">Private-key passphrase</Label>
+              <Input
+                id="pass"
+                type="password"
+                autoComplete="off"
+                value={tallyPass}
+                onChange={(ev) => setTallyPass(ev.target.value)}
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={tallyBusy || !tallyPass}>
+                {tallyBusy ? "Decrypting ballots…" : "Run tally"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Passphrase reveal dialog (after creation) */}
       <Dialog open={!!passphrase} onOpenChange={(o) => !o && setPassphrase(null)}>
         <DialogContent>
           <DialogHeader>
