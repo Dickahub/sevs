@@ -279,7 +279,9 @@ export const listAdminElections = createServerFn({ method: "GET" })
     await requireAdmin(context.userId);
     const { data: elections } = await supabaseAdmin
       .from("elections")
-      .select("id, title, organisation, description, status, opens_at, closes_at, positions(id, title, seats)")
+      .select(
+        "id, title, organisation, description, status, opens_at, closes_at, suspended, results_published, tallied_at, positions(id, title, seats)",
+      )
       .order("created_at", { ascending: false });
 
     const { data: elig } = await supabaseAdmin.from("election_eligibility").select("election_id");
