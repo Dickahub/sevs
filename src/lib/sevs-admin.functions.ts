@@ -312,6 +312,9 @@ export const listAdminElections = createServerFn({ method: "GET" })
           opensAt: e.opens_at,
           closesAt: e.closes_at,
           hasOpened: now >= opensMs,
+          suspended: e.suspended ?? false,
+          resultsPublished: e.results_published ?? false,
+          talliedAt: e.tallied_at,
           eligibleCount: eligCount[e.id] ?? 0,
           candidateCount: candCount[e.id] ?? 0,
           positions: ((e.positions as Array<{ id: string; title: string; seats: number }>) ?? []).map(
