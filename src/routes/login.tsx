@@ -26,6 +26,7 @@ export const Route = createFileRoute("/login")({
 
 function Login() {
   const navigate = useNavigate();
+  const audit = useServerFn(logAuthEvent);
   const [step, setStep] = useState<"creds" | "otp">("creds");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,23 +38,29 @@ function Login() {
     e.preventDefault();
     setError("");
     setLoading(true);
+    const trimmedEmail = email.trim();
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
+      email: trimmedEmail,
       password,
     });
     setLoading(false);
     if (signInError) {
+      // Fire-and-forget audit; never block the UI on logging.
+      audit({ data: { type: "login_failure", email: trimmedEmail } }).catch(() => {});
       setError("Invalid credentials. Please check your email and password.");
       return;
     }
+    audit({ data: { type: "login_success", email: trimmedEmail } }).catch(() => {});
     setStep("otp");
   }
 
   function handleOtp(e: React.FormEvent) {
     e.preventDefault();
     // Demo 2FA step (RFC 6238 TOTP UI). Session is already established above.
+    audit({ data: { type: "totp_verified", email: email.trim() } }).catch(() => {});
     navigate({ to: "/dashboard" });
   }
+
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
