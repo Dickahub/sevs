@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /audit
+Disallow: /dashboard
+Disallow: /vote
+Disallow: /setup
+
+Sitemap: https://sevs.lovable.app/sitemap.xml
