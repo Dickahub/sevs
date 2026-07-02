@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as AuditRouteImport } from './routes/audit'
@@ -22,6 +23,11 @@ import { Route as VoteElectionIdCastRouteImport } from './routes/vote.$electionI
 import { Route as ApiPublicSeedSevsRouteImport } from './routes/api/public/seed-sevs'
 import { Route as ApiPublicResultsStreamElectionIdRouteImport } from './routes/api/public/results-stream.$electionId'
 
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -90,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuditRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/results/$electionId': typeof ResultsElectionIdRoute
   '/setup/$token': typeof SetupTokenRoute
   '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
@@ -104,6 +111,7 @@ export interface FileRoutesByTo {
   '/audit': typeof AuditRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/results/$electionId': typeof ResultsElectionIdRoute
   '/setup/$token': typeof SetupTokenRoute
   '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
@@ -119,6 +127,7 @@ export interface FileRoutesById {
   '/audit': typeof AuditRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/results/$electionId': typeof ResultsElectionIdRoute
   '/setup/$token': typeof SetupTokenRoute
   '/vote/$electionId': typeof VoteElectionIdRouteWithChildren
@@ -135,6 +144,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/dashboard'
     | '/login'
+    | '/sitemap.xml'
     | '/results/$electionId'
     | '/setup/$token'
     | '/vote/$electionId'
@@ -149,6 +159,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/dashboard'
     | '/login'
+    | '/sitemap.xml'
     | '/results/$electionId'
     | '/setup/$token'
     | '/vote/$electionId'
@@ -163,6 +174,7 @@ export interface FileRouteTypes {
     | '/audit'
     | '/dashboard'
     | '/login'
+    | '/sitemap.xml'
     | '/results/$electionId'
     | '/setup/$token'
     | '/vote/$electionId'
@@ -178,6 +190,7 @@ export interface RootRouteChildren {
   AuditRoute: typeof AuditRoute
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ResultsElectionIdRoute: typeof ResultsElectionIdRoute
   SetupTokenRoute: typeof SetupTokenRoute
   VoteElectionIdRoute: typeof VoteElectionIdRouteWithChildren
@@ -188,6 +201,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -293,6 +313,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuditRoute: AuditRoute,
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   ResultsElectionIdRoute: ResultsElectionIdRoute,
   SetupTokenRoute: SetupTokenRoute,
   VoteElectionIdRoute: VoteElectionIdRouteWithChildren,

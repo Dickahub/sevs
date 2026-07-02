@@ -74,24 +74,34 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Secure-Voting-System" },
-      { name: "description", content: "Replicates UI elements from screenshots, enabling precise visual component implementation." },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Secure-Voting-System" },
-      { property: "og:description", content: "Replicates UI elements from screenshots, enabling precise visual component implementation." },
+      { title: "SEVS — Secure Electronic Voting System" },
+      {
+        name: "description",
+        content:
+          "SEVS is a secure electronic voting system with end-to-end encrypted ballots, verifiable receipts, and a tamper-evident audit log.",
+      },
+      { name: "author", content: "SEVS" },
+      { property: "og:title", content: "SEVS — Secure Electronic Voting System" },
+      {
+        property: "og:description",
+        content:
+          "Encrypted ballots, one-voter-one-ballot integrity, live results, and a tamper-evident audit trail.",
+      },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "Secure-Voting-System" },
-      { name: "twitter:description", content: "Replicates UI elements from screenshots, enabling precise visual component implementation." },
+      { property: "og:url", content: "https://sevs.lovable.app" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "SEVS — Secure Electronic Voting System" },
+      {
+        name: "twitter:description",
+        content:
+          "Encrypted ballots, one-voter-one-ballot integrity, live results, and a tamper-evident audit trail.",
+      },
       { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2cb159ca-5f95-4360-8670-9dac1a413525/id-preview-377bcbf8--1866c4db-f907-41c9-b37b-1249f83c1594.lovable.app-1782299251855.png" },
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/2cb159ca-5f95-4360-8670-9dac1a413525/id-preview-377bcbf8--1866c4db-f907-41c9-b37b-1249f83c1594.lovable.app-1782299251855.png" },
     ],
     links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
+      { rel: "stylesheet", href: appCss },
+      { rel: "canonical", href: "https://sevs.lovable.app" },
     ],
   }),
   shellComponent: RootShell,
